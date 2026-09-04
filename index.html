@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1b2c2a" />
+    <meta name="description" content="A quick-draw reaction game set at high noon." />
+    <title>High Noon Quickdraw v0.1</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="game-shell">
+      <header class="masthead">
+        <p class="eyebrow">v0.1 · Est. 1889 · No second chances</p>
+        <h1>High Noon <span>Quickdraw</span></h1>
+        <p class="subtitle">Outdraw the fastest steel in the territory.</p>
+      </header>
+
+      <section class="scoreboard" aria-label="Quickdraw scorecard">
+        <div class="score-card">
+          <span class="score-label">Your best</span>
+          <strong id="best-time">--</strong>
+          <span class="score-unit">milliseconds</span>
+        </div>
+        <div class="versus" aria-hidden="true">VS</div>
+        <div class="score-card opponent-card">
+          <span class="score-label">Opponent</span>
+          <strong id="opponent-name">The Iron Jack</strong>
+          <span class="score-unit">wanted in 3 counties</span>
+        </div>
+      </section>
+
+      <section class="duel-card" id="duel-card" aria-labelledby="round-title">
+        <div class="horizon" aria-hidden="true">
+          <span class="sun"></span>
+          <span class="mesa mesa-one"></span>
+          <span class="mesa mesa-two"></span>
+          <span class="cactus cactus-left"></span>
+          <span class="cactus cactus-right"></span>
+        </div>
+        <div class="dust dust-one" aria-hidden="true"></div>
+        <div class="dust dust-two" aria-hidden="true"></div>
+
+        <div class="round-content">
+          <p class="round-number" id="round-number">READY FOR A DUEL</p>
+          <h2 id="round-title">Keep your hand steady.</h2>
+          <p class="instruction" id="instruction">Start the clock, then wait for the signal.</p>
+          <div class="signal" id="signal" aria-hidden="true"><span></span></div>
+          <p class="reaction-readout" id="reaction-readout" aria-live="polite">--</p>
+
+          <button class="draw-button" id="draw-button" type="button">
+            <span class="button-kicker">Press space or tap</span>
+            <span class="button-main" id="button-main">Start duel</span>
+          </button>
+          <p class="key-hint"><kbd>SPACE</kbd> draws from anywhere</p>
+        </div>
+      </section>
+
+      <section class="rules" aria-label="How to play">
+        <div><b>01</b><span>Start the duel.</span></div>
+        <div><b>02</b><span>Wait for <em>DRAW!</em></span></div>
+        <div><b>03</b><span>Beat the outlaw.</span></div>
+      </section>
+
+      <footer>
+        <label class="sound-toggle"><input id="sound-toggle" type="checkbox" /> <span>Sound</span></label>
+        <span>One player · Infinite glory</span>
+      </footer>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
