@@ -5,14 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#11151b" />
     <meta name="description" content="Sundown Signal is an original, focused western standoff game." />
-    <title>Sundown Signal | v0.3</title>
+    <title>Sundown Signal | v0.4</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="site-frame">
       <header class="topbar">
         <a class="wordmark" href="#play" aria-label="Sundown Signal home"><span class="wordmark-mark">SS</span> Sundown Signal</a>
-        <p class="edition">FIELD EDITION <b>v0.3</b></p>
+        <p class="edition">FIELD EDITION <b>v0.4</b></p>
         <label class="sound-switch"><input id="sound-toggle" type="checkbox" /><span aria-hidden="true"></span> Audio</label>
       </header>
 
@@ -54,24 +54,32 @@
             <p class="instruction" id="instruction">Begin when your hand is ready.</p>
           </div>
 
-          <div class="signal-lamp" aria-hidden="true"><span></span></div>
-          <p class="live-readout" id="reaction-readout" aria-live="polite">The wire is quiet.</p>
+           <div class="signal-lamp" aria-hidden="true"><span></span></div>
+           <p class="live-readout" id="reaction-readout" aria-live="polite">The wire is quiet.</p>
 
-          <div class="sight-panel" id="aim-panel" hidden>
-            <div class="sight-topline"><span>Focus reserve</span><span id="focus-value">100%</span></div>
-            <div class="focus-meter" aria-hidden="true"><span id="focus-fill"></span></div>
-            <div class="sight-field" id="aim-area" tabindex="0" role="group" aria-describedby="aim-help" aria-label="Sight field. Move the sight with mouse, touch drag, arrow keys, or WASD. Press Space, Enter, or Confirm shot to fire.">
-              <span class="figure" id="target" aria-hidden="true"><i></i></span>
-              <span class="sight" id="reticle" aria-hidden="true"></span>
-            </div>
-            <p class="aim-help" id="aim-help">Drag or use arrows/WASD to settle your sight. Then confirm the shot.</p>
-          </div>
+           <div class="focus-panel" id="focus-panel" hidden>
+             <div class="sight-topline"><span>Focus gathered</span><span id="charge-value">0%</span></div>
+             <div class="focus-meter" aria-hidden="true"><span id="charge-fill"></span></div>
+             <p>Hold the action control to steady your breath. Release before the lamp calls.</p>
+           </div>
+
+           <div class="sight-panel" id="aim-panel" hidden>
+             <div class="sight-topline"><span>Focus reserve</span><span id="focus-value">100%</span></div>
+             <div class="focus-meter" aria-hidden="true"><span id="focus-fill"></span></div>
+              <div class="sight-field" id="aim-area" tabindex="0" role="group" aria-describedby="aim-help" aria-label="Sight field. Move the reticle with mouse, touch drag, arrow keys, or WASD. Press Space, Enter, or Fire shot to fire.">
+               <span class="figure" id="target" aria-hidden="true"><i></i></span>
+               <span class="sight" id="reticle" aria-hidden="true"></span>
+             </div>
+             <div class="aim-readouts"><span id="accuracy-value">SEARCHING</span><span><i>Opposing pressure</i><b id="pressure-value">0%</b></span></div>
+             <div class="pressure-meter" aria-hidden="true"><span id="pressure-fill"></span></div>
+             <p class="aim-help" id="aim-help">Drag or use arrows/WASD to settle the reticle. Fire only when the line is true.</p>
+           </div>
 
           <button class="action-button" id="draw-button" type="button">
             <span id="button-kicker">Space, Enter, or tap</span>
             <b id="button-main">Open the range</b>
           </button>
-          <p class="control-hint" id="key-hint"><kbd>SPACE</kbd> begins and confirms · <kbd>ARROWS</kbd> or <kbd>WASD</kbd> aim</p>
+          <p class="control-hint" id="key-hint"><kbd>SPACE</kbd> holds focus, draws, and fires · <kbd>ARROWS</kbd> or <kbd>WASD</kbd> aim</p>
         </section>
       </section>
 
@@ -80,14 +88,15 @@
           <p class="kicker">Procedure</p>
           <h2 id="how-title">Three beats. One round.</h2>
           <ol>
-            <li><b>01</b><span><strong>Wait</strong> for the lamp to flare. An early action ends the round.</span></li>
-            <li><b>02</b><span><strong>Settle</strong> the sight over the moving figure while focus holds.</span></li>
-            <li><b>03</b><span><strong>Confirm</strong> one shot before the other side acts.</span></li>
+            <li><b>01</b><span><strong>Gather</strong> focus by holding the action control while the wire is quiet.</span></li>
+            <li><b>02</b><span><strong>Draw</strong> only when the lamp flares, then settle the sight on the moving figure.</span></li>
+            <li><b>03</b><span><strong>Fire</strong> one measured shot before opposing pressure reaches its mark.</span></li>
           </ol>
         </section>
         <section class="release-log" aria-labelledby="release-title">
-          <div class="release-heading"><p class="kicker">Version ledger</p><h2 id="release-title">v0.3</h2></div>
+          <div class="release-heading"><p class="kicker">Version ledger</p><h2 id="release-title">v0.4</h2></div>
           <ul>
+            <li><b>v0.4</b> Focus gathering, a deliberate draw beat, live reticle confidence, and opposing pressure.</li>
             <li><b>v0.3</b> New range layout, focus reserve, sight evaluation, and unified touch controls.</li>
             <li><b>v0.2</b> Initial timing-and-aim duel prototype.</li>
             <li><b>v0.1</b> First playable field test.</li>
