@@ -4,21 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#1b2c2a" />
-    <meta name="description" content="A quick-draw reaction game set at high noon." />
-    <title>High Noon Quickdraw v0.1</title>
+    <meta name="description" content="A skill-based western duel of timing, aim, and composure." />
+    <title>High Noon Quickdraw v0.2</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <main class="game-shell">
       <header class="masthead">
-        <p class="eyebrow">v0.1 · Est. 1889 · No second chances</p>
+        <p class="eyebrow">v0.2 · Est. 1889 · Hold your nerve</p>
         <h1>High Noon <span>Quickdraw</span></h1>
         <p class="subtitle">Outdraw the fastest steel in the territory.</p>
       </header>
 
       <section class="scoreboard" aria-label="Quickdraw scorecard">
         <div class="score-card">
-          <span class="score-label">Your best</span>
+          <span class="score-label">Best shot</span>
           <strong id="best-time">--</strong>
           <span class="score-unit">milliseconds</span>
         </div>
@@ -46,20 +46,29 @@
           <h2 id="round-title">Keep your hand steady.</h2>
           <p class="instruction" id="instruction">Start the clock, then wait for the signal.</p>
           <div class="signal" id="signal" aria-hidden="true"><span></span></div>
+          <div class="aim-panel" id="aim-panel" hidden>
+            <div class="aim-heading"><span>Find your mark</span><span id="nerve-value">Nerve 100%</span></div>
+            <div class="nerve-meter" aria-hidden="true"><span id="nerve-fill"></span></div>
+            <div class="aim-area" id="aim-area" tabindex="0" role="group" aria-describedby="aim-help" aria-label="Aim field. Move the reticle with mouse, touch drag, arrow keys, or WASD. Press Space, Enter, or the Fire button to shoot.">
+              <span class="target" id="target" aria-hidden="true"></span>
+              <span class="reticle" id="reticle" aria-hidden="true"></span>
+            </div>
+            <p class="aim-help" id="aim-help">Track the moving mark. Keep steady, then fire.</p>
+          </div>
           <p class="reaction-readout" id="reaction-readout" aria-live="polite">--</p>
 
           <button class="draw-button" id="draw-button" type="button">
-            <span class="button-kicker">Press space or tap</span>
+            <span class="button-kicker" id="button-kicker">Press space or tap</span>
             <span class="button-main" id="button-main">Start duel</span>
           </button>
-          <p class="key-hint"><kbd>SPACE</kbd> draws from anywhere</p>
+          <p class="key-hint" id="key-hint"><kbd>SPACE</kbd> starts, draws, or fires</p>
         </div>
       </section>
 
       <section class="rules" aria-label="How to play">
-        <div><b>01</b><span>Start the duel.</span></div>
-        <div><b>02</b><span>Wait for <em>DRAW!</em></span></div>
-        <div><b>03</b><span>Beat the outlaw.</span></div>
+        <div><b>01</b><span>Wait for <em>DRAW!</em></span></div>
+        <div><b>02</b><span>Track the moving mark.</span></div>
+        <div><b>03</b><span>Align, then fire.</span></div>
       </section>
 
       <footer>
