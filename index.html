@@ -3,78 +3,99 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#1b2c2a" />
-    <meta name="description" content="A skill-based western duel of timing, aim, and composure." />
-    <title>High Noon Quickdraw v0.2</title>
+    <meta name="theme-color" content="#11151b" />
+    <meta name="description" content="Sundown Signal is an original, focused western standoff game." />
+    <title>Sundown Signal | v0.3</title>
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="game-shell">
-      <header class="masthead">
-        <p class="eyebrow">v0.2 · Est. 1889 · Hold your nerve</p>
-        <h1>High Noon <span>Quickdraw</span></h1>
-        <p class="subtitle">Outdraw the fastest steel in the territory.</p>
+    <main class="site-frame">
+      <header class="topbar">
+        <a class="wordmark" href="#play" aria-label="Sundown Signal home"><span class="wordmark-mark">SS</span> Sundown Signal</a>
+        <p class="edition">FIELD EDITION <b>v0.3</b></p>
+        <label class="sound-switch"><input id="sound-toggle" type="checkbox" /><span aria-hidden="true"></span> Audio</label>
       </header>
 
-      <section class="scoreboard" aria-label="Quickdraw scorecard">
-        <div class="score-card">
-          <span class="score-label">Best shot</span>
-          <strong id="best-time">--</strong>
-          <span class="score-unit">milliseconds</span>
-        </div>
-        <div class="versus" aria-hidden="true">VS</div>
-        <div class="score-card opponent-card">
-          <span class="score-label">Opponent</span>
-          <strong id="opponent-name">The Iron Jack</strong>
-          <span class="score-unit">wanted in 3 counties</span>
-        </div>
+      <section class="intro" aria-labelledby="site-title">
+        <p class="kicker">A one-shot field exercise</p>
+        <h1 id="site-title">Keep the horizon<br /><i>in your sights.</i></h1>
+        <p class="dek">Wait through the silence. At the signal, settle your sight on the distant silhouette and make one deliberate decision.</p>
       </section>
 
-      <section class="duel-card" id="duel-card" aria-labelledby="round-title">
-        <div class="horizon" aria-hidden="true">
-          <span class="sun"></span>
-          <span class="mesa mesa-one"></span>
-          <span class="mesa mesa-two"></span>
-          <span class="cactus cactus-left"></span>
-          <span class="cactus cactus-right"></span>
-        </div>
-        <div class="dust dust-one" aria-hidden="true"></div>
-        <div class="dust dust-two" aria-hidden="true"></div>
-
-        <div class="round-content">
-          <p class="round-number" id="round-number">READY FOR A DUEL</p>
-          <h2 id="round-title">Keep your hand steady.</h2>
-          <p class="instruction" id="instruction">Start the clock, then wait for the signal.</p>
-          <div class="signal" id="signal" aria-hidden="true"><span></span></div>
-          <div class="aim-panel" id="aim-panel" hidden>
-            <div class="aim-heading"><span>Find your mark</span><span id="nerve-value">Nerve 100%</span></div>
-            <div class="nerve-meter" aria-hidden="true"><span id="nerve-fill"></span></div>
-            <div class="aim-area" id="aim-area" tabindex="0" role="group" aria-describedby="aim-help" aria-label="Aim field. Move the reticle with mouse, touch drag, arrow keys, or WASD. Press Space, Enter, or the Fire button to shoot.">
-              <span class="target" id="target" aria-hidden="true"></span>
-              <span class="reticle" id="reticle" aria-hidden="true"></span>
-            </div>
-            <p class="aim-help" id="aim-help">Track the moving mark. Keep steady, then fire.</p>
+      <section class="duel-layout" id="play" aria-label="Sundown Signal game">
+        <aside class="field-notes" aria-label="Duel information">
+          <div class="note-block">
+            <span class="micro-label">Best confirmed</span>
+            <strong id="best-time">--</strong>
+            <span class="micro-detail">reaction record</span>
           </div>
-          <p class="reaction-readout" id="reaction-readout" aria-live="polite">--</p>
+          <div class="note-block">
+            <span class="micro-label">Across the wash</span>
+            <strong id="opponent-name">Rook Halden</strong>
+            <span class="micro-detail" id="opponent-detail">known for patience</span>
+          </div>
+          <div class="note-block status-block">
+            <span class="micro-label">Field status</span>
+            <strong id="status-value">QUIET</strong>
+            <span class="micro-detail" id="status-detail">awaiting a runner</span>
+          </div>
+        </aside>
 
-          <button class="draw-button" id="draw-button" type="button">
-            <span class="button-kicker" id="button-kicker">Press space or tap</span>
-            <span class="button-main" id="button-main">Start duel</span>
+        <section class="range" id="duel-card" aria-labelledby="round-title">
+          <div class="sky" aria-hidden="true"><span class="moon"></span><span class="stars"></span></div>
+          <div class="ridge ridge-back" aria-hidden="true"></div>
+          <div class="ridge ridge-front" aria-hidden="true"></div>
+          <div class="telegraph-pole" aria-hidden="true"><span></span></div>
+          <div class="ground-haze" aria-hidden="true"></div>
+
+          <div class="range-copy">
+            <p class="round-label" id="round-number">RANGE CLOSED</p>
+            <h2 id="round-title">No one moves until the signal.</h2>
+            <p class="instruction" id="instruction">Begin when your hand is ready.</p>
+          </div>
+
+          <div class="signal-lamp" aria-hidden="true"><span></span></div>
+          <p class="live-readout" id="reaction-readout" aria-live="polite">The wire is quiet.</p>
+
+          <div class="sight-panel" id="aim-panel" hidden>
+            <div class="sight-topline"><span>Focus reserve</span><span id="focus-value">100%</span></div>
+            <div class="focus-meter" aria-hidden="true"><span id="focus-fill"></span></div>
+            <div class="sight-field" id="aim-area" tabindex="0" role="group" aria-describedby="aim-help" aria-label="Sight field. Move the sight with mouse, touch drag, arrow keys, or WASD. Press Space, Enter, or Confirm shot to fire.">
+              <span class="figure" id="target" aria-hidden="true"><i></i></span>
+              <span class="sight" id="reticle" aria-hidden="true"></span>
+            </div>
+            <p class="aim-help" id="aim-help">Drag or use arrows/WASD to settle your sight. Then confirm the shot.</p>
+          </div>
+
+          <button class="action-button" id="draw-button" type="button">
+            <span id="button-kicker">Space, Enter, or tap</span>
+            <b id="button-main">Open the range</b>
           </button>
-          <p class="key-hint" id="key-hint"><kbd>SPACE</kbd> starts, draws, or fires</p>
-        </div>
+          <p class="control-hint" id="key-hint"><kbd>SPACE</kbd> begins and confirms · <kbd>ARROWS</kbd> or <kbd>WASD</kbd> aim</p>
+        </section>
       </section>
 
-      <section class="rules" aria-label="How to play">
-        <div><b>01</b><span>Wait for <em>DRAW!</em></span></div>
-        <div><b>02</b><span>Track the moving mark.</span></div>
-        <div><b>03</b><span>Align, then fire.</span></div>
+      <section class="lower-grid">
+        <section class="how-to" aria-labelledby="how-title">
+          <p class="kicker">Procedure</p>
+          <h2 id="how-title">Three beats. One round.</h2>
+          <ol>
+            <li><b>01</b><span><strong>Wait</strong> for the lamp to flare. An early action ends the round.</span></li>
+            <li><b>02</b><span><strong>Settle</strong> the sight over the moving figure while focus holds.</span></li>
+            <li><b>03</b><span><strong>Confirm</strong> one shot before the other side acts.</span></li>
+          </ol>
+        </section>
+        <section class="release-log" aria-labelledby="release-title">
+          <div class="release-heading"><p class="kicker">Version ledger</p><h2 id="release-title">v0.3</h2></div>
+          <ul>
+            <li><b>v0.3</b> New range layout, focus reserve, sight evaluation, and unified touch controls.</li>
+            <li><b>v0.2</b> Initial timing-and-aim duel prototype.</li>
+            <li><b>v0.1</b> First playable field test.</li>
+          </ul>
+        </section>
       </section>
 
-      <footer>
-        <label class="sound-toggle"><input id="sound-toggle" type="checkbox" /> <span>Sound</span></label>
-        <span>One player · Infinite glory</span>
-      </footer>
+      <footer><span>Original browser game · no external assets</span><a href="#play">Return to range ↑</a></footer>
     </main>
     <script src="app.js"></script>
   </body>

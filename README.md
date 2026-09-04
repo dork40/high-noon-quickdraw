@@ -1,17 +1,30 @@
-# High Noon Quickdraw v0.2
+# Sundown Signal v0.3
 
-A standalone, responsive western duel game of reaction, aim, and nerve. No build step or dependencies are required.
+Sundown Signal is an original standalone browser game built around a cinematic western standoff: wait for a signal, manage focus, settle a sight, and make one evaluated shot. It uses no external visual assets, characters, or material from other games.
 
-## Play
+## Run
 
-Open `index.html` in a modern browser. Start a duel and wait for **DRAW!**. Acting before that signal is a false start. Once the draw begins, track the moving mark, align the reticle, and fire before the opponent does. A shot outside the mark misses.
+Open `index.html` in a current browser. There is no build step and no dependency installation required.
 
-Use a mouse to move the reticle in the aim field, or drag within it on touch devices. Keyboard players can move with Arrow keys or WASD (`Shift` makes larger movements), then fire with Space or Enter. The on-screen **Fire** button is always available. Nerve drains while the opponent applies pressure, making a clean shot more demanding.
+## Controls
 
-Your fastest successful shot is stored locally in browser `localStorage`. Sound is optional and uses Web Audio only when enabled; unavailable audio never affects gameplay.
+- Start, reset, and confirm a shot: click/tap the action button, `Space`, or `Enter`.
+- Aim with a mouse: move within the sight field.
+- Aim by touch: drag within the sight field, then tap **Confirm shot**.
+- Aim by keyboard: Arrow keys or `WASD`; hold `Shift` for larger movement.
+
+Do not confirm during the listening phase: that creates a field fault. Once the lamp signals, the distant figure moves and your focus reserve drains. A shot succeeds when the sight is inside the focus-scaled evaluation window before the rival acts.
+
+Your best successful reaction is stored with `localStorage` when available. Optional audio is generated with Web Audio only after it is enabled.
+
+## Version Ledger
+
+- **v0.3**: Rebuilt the game as Sundown Signal with a new field-console layout, original scene, focus reserve, revised shot evaluation, improved unified controls, and visible release ledger.
+- **v0.2**: Initial timing-and-aim duel prototype.
+- **v0.1**: First playable field test.
 
 ## Files
 
-- `index.html` - game structure and accessible status regions
-- `styles.css` - original responsive western visual design
-- `app.js` - duel state machine, aim movement, input, timing, score persistence, and optional sound
+- `index.html` - accessible game structure, instructions, and visible version ledger
+- `styles.css` - responsive original visual system and range scene
+- `app.js` - round state machine, input handling, shot evaluation, records, and optional sound
