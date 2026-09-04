@@ -1,4 +1,4 @@
-import type { DuelResult, GameSettings } from "../types";
+import type { DuelResult, DuelWord, GameSettings } from "../types";
 
 export const settings: GameSettings = {
   minWaitMs: 2000,
@@ -15,6 +15,12 @@ export function createRoundTiming(config = settings) {
     waitMs: randomBetween(config.minWaitMs, config.maxWaitMs),
     opponentReactionMs: randomBetween(config.minOpponentReactionMs, config.maxOpponentReactionMs),
   };
+}
+
+const duelWords: DuelWord[] = ["SHOOT", "DRAW", "POW"];
+
+export function randomDuelWord(): DuelWord {
+  return duelWords[Math.floor(Math.random() * duelWords.length)]!;
 }
 
 export function resolveShot(reactionMs: number, opponentReactionMs: number): DuelResult {
