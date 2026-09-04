@@ -3,109 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#11151b" />
-    <meta name="description" content="Sundown Signal is an original, focused western standoff game." />
-    <title>Sundown Signal | v0.4</title>
-    <link rel="stylesheet" href="styles.css" />
+    <meta name="theme-color" content="#190e15" />
+    <meta name="description" content="High Noon Showdown, an original Wild West quick-draw game." />
+    <title>High Noon Showdown</title>
   </head>
   <body>
-    <main class="site-frame">
-      <header class="topbar">
-        <a class="wordmark" href="#play" aria-label="Sundown Signal home"><span class="wordmark-mark">SS</span> Sundown Signal</a>
-        <p class="edition">FIELD EDITION <b>v0.4</b></p>
-        <label class="sound-switch"><input id="sound-toggle" type="checkbox" /><span aria-hidden="true"></span> Audio</label>
-      </header>
-
-      <section class="intro" aria-labelledby="site-title">
-        <p class="kicker">A one-shot field exercise</p>
-        <h1 id="site-title">Keep the horizon<br /><i>in your sights.</i></h1>
-        <p class="dek">Wait through the silence. At the signal, settle your sight on the distant silhouette and make one deliberate decision.</p>
-      </section>
-
-      <section class="duel-layout" id="play" aria-label="Sundown Signal game">
-        <aside class="field-notes" aria-label="Duel information">
-          <div class="note-block">
-            <span class="micro-label">Best confirmed</span>
-            <strong id="best-time">--</strong>
-            <span class="micro-detail">reaction record</span>
-          </div>
-          <div class="note-block">
-            <span class="micro-label">Across the wash</span>
-            <strong id="opponent-name">Rook Halden</strong>
-            <span class="micro-detail" id="opponent-detail">known for patience</span>
-          </div>
-          <div class="note-block status-block">
-            <span class="micro-label">Field status</span>
-            <strong id="status-value">QUIET</strong>
-            <span class="micro-detail" id="status-detail">awaiting a runner</span>
-          </div>
-        </aside>
-
-        <section class="range" id="duel-card" aria-labelledby="round-title">
-          <div class="sky" aria-hidden="true"><span class="moon"></span><span class="stars"></span></div>
-          <div class="ridge ridge-back" aria-hidden="true"></div>
-          <div class="ridge ridge-front" aria-hidden="true"></div>
-          <div class="telegraph-pole" aria-hidden="true"><span></span></div>
-          <div class="ground-haze" aria-hidden="true"></div>
-
-          <div class="range-copy">
-            <p class="round-label" id="round-number">RANGE CLOSED</p>
-            <h2 id="round-title">No one moves until the signal.</h2>
-            <p class="instruction" id="instruction">Begin when your hand is ready.</p>
-          </div>
-
-           <div class="signal-lamp" aria-hidden="true"><span></span></div>
-           <p class="live-readout" id="reaction-readout" aria-live="polite">The wire is quiet.</p>
-
-           <div class="focus-panel" id="focus-panel" hidden>
-             <div class="sight-topline"><span>Focus gathered</span><span id="charge-value">0%</span></div>
-             <div class="focus-meter" aria-hidden="true"><span id="charge-fill"></span></div>
-             <p>Hold the action control to steady your breath. Release before the lamp calls.</p>
-           </div>
-
-           <div class="sight-panel" id="aim-panel" hidden>
-             <div class="sight-topline"><span>Focus reserve</span><span id="focus-value">100%</span></div>
-             <div class="focus-meter" aria-hidden="true"><span id="focus-fill"></span></div>
-              <div class="sight-field" id="aim-area" tabindex="0" role="group" aria-describedby="aim-help" aria-label="Sight field. Move the reticle with mouse, touch drag, arrow keys, or WASD. Press Space, Enter, or Fire shot to fire.">
-               <span class="figure" id="target" aria-hidden="true"><i></i></span>
-               <span class="sight" id="reticle" aria-hidden="true"></span>
-             </div>
-             <div class="aim-readouts"><span id="accuracy-value">SEARCHING</span><span><i>Opposing pressure</i><b id="pressure-value">0%</b></span></div>
-             <div class="pressure-meter" aria-hidden="true"><span id="pressure-fill"></span></div>
-             <p class="aim-help" id="aim-help">Drag or use arrows/WASD to settle the reticle. Fire only when the line is true.</p>
-           </div>
-
-          <button class="action-button" id="draw-button" type="button">
-            <span id="button-kicker">Space, Enter, or tap</span>
-            <b id="button-main">Open the range</b>
-          </button>
-          <p class="control-hint" id="key-hint"><kbd>SPACE</kbd> holds focus, draws, and fires · <kbd>ARROWS</kbd> or <kbd>WASD</kbd> aim</p>
-        </section>
-      </section>
-
-      <section class="lower-grid">
-        <section class="how-to" aria-labelledby="how-title">
-          <p class="kicker">Procedure</p>
-          <h2 id="how-title">Three beats. One round.</h2>
-          <ol>
-            <li><b>01</b><span><strong>Gather</strong> focus by holding the action control while the wire is quiet.</span></li>
-            <li><b>02</b><span><strong>Draw</strong> only when the lamp flares, then settle the sight on the moving figure.</span></li>
-            <li><b>03</b><span><strong>Fire</strong> one measured shot before opposing pressure reaches its mark.</span></li>
-          </ol>
-        </section>
-        <section class="release-log" aria-labelledby="release-title">
-          <div class="release-heading"><p class="kicker">Version ledger</p><h2 id="release-title">v0.4</h2></div>
-          <ul>
-            <li><b>v0.4</b> Focus gathering, a deliberate draw beat, live reticle confidence, and opposing pressure.</li>
-            <li><b>v0.3</b> New range layout, focus reserve, sight evaluation, and unified touch controls.</li>
-            <li><b>v0.2</b> Initial timing-and-aim duel prototype.</li>
-            <li><b>v0.1</b> First playable field test.</li>
-          </ul>
-        </section>
-      </section>
-
-      <footer><span>Original browser game · no external assets</span><a href="#play">Return to range ↑</a></footer>
-    </main>
-    <script src="app.js"></script>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
