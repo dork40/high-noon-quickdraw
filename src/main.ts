@@ -69,7 +69,7 @@ function gameView() {
   const phase = round.phase;
   const wordMode = round.mode === "word-duel";
   const quickDrawMode = round.mode === "original-quick-draw";
-  const word = wordMode ? round.word : undefined;
+  const word = round.mode === "word-duel" ? round.word : undefined;
   const label = phase === "waiting" ? "WAIT" : wordMode && phase === "word" ? word! : quickDrawMode && phase === "draw" ? "DRAW!" : result ? result.outcome.toUpperCase().replace("-", " ") : "THE STREET IS QUIET";
   const prompt = phase === "waiting" ? "Wait for the signal. An early action loses the round." : wordMode && phase === "word" ? "Type the word exactly, then press Enter." : quickDrawMode && phase === "draw" ? "DRAW! Shoot once before Ash reacts." : result ? result.message : "Face the challenger when you are ready.";
   const button = phase === "menu" || phase === "result" ? "START DUEL" : quickDrawMode && phase === "draw" ? "SHOOT" : "FIRE";
