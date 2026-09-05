@@ -1,10 +1,10 @@
-import type { AiDifficulty, DuelResult, DuelWord, DustBluffChoice, GameSettings } from "../types";
+import type { AiDifficulty, DuelResult, DuelWord, GameSettings, RpsChoice } from "../types";
 
 export const bottleRoundMs = 30_000;
 export const bottleTargetMs = 1_500;
 export const bottlesPerWave = 6;
 export const bottleMissPenalty = -10;
-export const dustDecisionMs = 7_000;
+export const rpsDecisionMs = 7_000;
 export type BottleKind = "green" | "blue" | "red";
 export interface BottleTarget { id: number; kind: BottleKind; x: number; y: number; }
 
@@ -83,19 +83,13 @@ export function aiBottleScore(difficulty: AiDifficulty) {
   return goodHits * 10 + (redHits + rangeMisses) * bottleMissPenalty;
 }
 
-export function dustHandLabel(strength: number) {
-  return strength >= 8 ? "HIGH TRAIL" : strength >= 5 ? "STEADY DUST" : "THIN DUST";
+export function aiRpsChoice(_difficulty: AiDifficulty): RpsChoice {
+  return (["rock", "paper", "scissors"] as RpsChoice[])[Math.floor(Math.random() * 3)]!;
 }
 
-export function aiDustChoice(hand: number, difficulty: AiDifficulty): DustBluffChoice {
-  const bluffChance = difficulty === "hard" ? .38 : difficulty === "easy" ? .18 : .28;
-  if (hand <= 4 && Math.random() < bluffChance) return "bluff";
-  return hand >= 7 ? "draw" : "hold";
-}
-
-// Dust Bluff is a three-choice nerve game, not poker: Hold beats Bluff, Bluff beats Draw, Draw beats Hold.
-export function resolveDustBluff(playerHand: number, opponentHand: number, player: DustBluffChoice, opponent: DustBluffChoice): DuelResult {
-  const beats: Record<DustBluffChoice, DustBluffChoice> = { draw: "hold", hold: "bluff", bluff: "draw" };
-  const playerWins = player === opponent ? playerHand >= opponentHand : beats[player] === opponent;
-  return { outcome: playerWins ? "win" : "loss", opponentReactionMs: opponentHand, message: player === opponent ? `${playerWins ? "Your stronger hand held." : "Ash's stronger hand held."} Matching choices compare hand strength.` : `${player.toUpperCase()} ${playerWins ? "outread" : "was outread by"} ${opponent.toUpperCase()}. Draw beats Hold, Hold beats Bluff, Bluff beats Draw.` };
+export function resolveRps(player: RpsChoice, opponent: RpsChoice): DuelResult {
+  const beats: Record<RpsChoice, RpsChoice> = { rock: "scissors", paper: "rock", scissors: "paper" };
+  if (player === opponent) return { outcome: "tie", opponentReactionMs: 0, message: "Matching signs tie. Start the next round." };
+  const playerWins = player !== opponent && beats[player] === opponent;
+  return { outcome: playerWins ? "win" : "loss", opponentReactionMs: 0, message: player === opponent ? "A tie. The host deals the next round." : `${player.toUpperCase()} ${playerWins ? "beats" : "loses to"} ${opponent.toUpperCase()}.` };
 }

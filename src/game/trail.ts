@@ -38,7 +38,14 @@ export function scoreTrail(points: TrailPoint[], trail: TrailPoint[]) {
   // Compare the reached target section against the player's whole trace so a single start/end jump cannot earn full accuracy.
   const totalDistance = trail.slice(0, reached + 1).reduce((total, target) => total + Math.min(...points.map(point => Math.hypot(point.x - target.x, point.y - target.y))), 0);
   const accuracy = Math.round(Math.max(0, 1 - totalDistance / (reached + 1) / .16) * 100);
-  return { score: Math.round(progress * .6 + accuracy * .4 + (progress > 92 ? 8 : 0)), progress, accuracy };
+  return { score: Math.round(progress * .6 + accuracy * .4 + (progress > 92 ? 8 : 0)), progress, accuracy, reachedEnd: reached === trail.length - 1 };
+}
+
+export const minimumTrailProgress = 95;
+export const minimumTrailAccuracy = 55;
+
+export function isValidTrailScore(result: { score: number; progress: number; accuracy: number; reachedEnd?: boolean }) {
+  return result.reachedEnd === true && result.progress >= minimumTrailProgress && result.accuracy >= minimumTrailAccuracy;
 }
 
 export function aiTrailScore(difficulty: "easy" | "normal" | "hard") {

@@ -1,5 +1,6 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
-import type { GameMode, MultiplayerRound, QuickMatchQueueEntry, Room, RoomRoundState, RoomStatus } from "../types";
+import type { GameMode, MultiplayerRound, QuickMatchQueueEntry, Room, RoomRoundState, RoomStatus, RpsChoice } from "../types";
+import { minimumTrailAccuracy, minimumTrailProgress } from "../game/trail";
 
 type RoomRow = {
   code: string;
@@ -32,8 +33,11 @@ export interface MultiplayerService {
   cancelQuickMatch(): Promise<Room | null>;
   subscribeToQuickMatch(onMatch: (room: Room) => void, onError: (message: string) => void): () => void;
   startRound(round: MultiplayerRound): Promise<Room>;
-  submitRoundAction(roundId: string, reactionMs: number, falseStart: boolean, payload?: Partial<{ score: number; progress: number; accuracy: number; choice: import("../types").DustBluffChoice }>): Promise<Room>;
+  submitRoundAction(roundId: string, reactionMs: number, falseStart: boolean, payload?: Partial<{ score: number; progress: number; accuracy: number; reachedEnd: boolean; choice: RpsChoice }>): Promise<Room>;
   resolveRound(roundId: string): Promise<Room>;
+  sendLiveAction(event: { roundId: string; reactionMs: number; falseStart: boolean; payload?: Partial<{ score: number; progress: number; accuracy: number; reachedEnd: boolean; choice: RpsChoice }> }): boolean;
+  onLiveEvent(listener: (event: { roundId: string }) => void): () => void;
+  transportStatus(): "connecting" | "connected" | "fallback" | "unavailable";
 }
 
 const url = import.meta.env.VITE_SUPABASE_URL;
@@ -42,6 +46,72 @@ const client: SupabaseClient | null = url && key ? createClient(url, key) : null
 let room: Room | null = null;
 let channel: RealtimeChannel | null = null;
 let quickMatchChannel: RealtimeChannel | null = null;
+let localUserId: string | null = null;
+let peer: RTCPeerConnection | null = null;
+let dataChannel: RTCDataChannel | null = null;
+let transport: "connecting" | "connected" | "fallback" | "unavailable" = typeof RTCPeerConnection === "undefined" ? "unavailable" : "fallback";
+let liveListener: ((event: { roundId: string }) => void) | undefined;
+const peerActions = new Map<string, { hostAction?: MultiplayerRound["hostAction"]; guestAction?: MultiplayerRound["guestAction"] }>();
+
+function closePeer() {
+  dataChannel?.close(); dataChannel = null;
+  peer?.close(); peer = null;
+  peerActions.clear();
+  transport = typeof RTCPeerConnection === "undefined" ? "unavailable" : "fallback";
+}
+
+function attachDataChannel(next: RTCDataChannel) {
+  dataChannel = next;
+  next.onopen = () => { transport = "connected"; };
+  next.onclose = () => { if (transport === "connected") transport = "fallback"; };
+  next.onerror = () => { transport = "fallback"; };
+  next.onmessage = event => {
+    try {
+      const message = JSON.parse(event.data) as { type: string; event?: { roundId: string; reactionMs: number; falseStart: boolean; payload?: MultiplayerRound["hostAction"] } };
+      if (message.type !== "action" || !message.event || !room || message.event.roundId !== room.roundState.round?.id) return;
+      const mode = room.roundState.round.gameMode ?? room.mode;
+      const payload = message.event.payload;
+      if (mode === "trail-trace" && (!Number.isFinite(payload?.score) || !Number.isFinite(payload?.progress) || !Number.isFinite(payload?.accuracy) || payload?.reachedEnd !== true || payload.score! < 0 || payload.score! > 108 || payload.progress! < minimumTrailProgress || payload.progress! > 100 || payload.accuracy! < minimumTrailAccuracy || payload.accuracy! > 100)) return;
+      if (mode === "rock-paper-scissors" && !["rock", "paper", "scissors"].includes(payload?.choice ?? "")) return;
+      const actions = peerActions.get(message.event.roundId) ?? {};
+      // The receiver is the other seat. Database state remains the durable fallback record.
+      const action = { at: new Date().toISOString(), reactionMs: message.event.reactionMs, ...(message.event.falseStart ? { falseStart: true } : {}), ...message.event.payload };
+      if (localUserId === room.hostId) actions.guestAction = action;
+      else actions.hostAction = action;
+      peerActions.set(message.event.roundId, actions);
+      liveListener?.({ roundId: message.event.roundId });
+    } catch { /* Ignore malformed peer data. */ }
+  };
+}
+
+async function sendSignal(payload: Record<string, unknown>) {
+  if (channel) await channel.send({ type: "broadcast", event: "webrtc", payload });
+}
+
+async function ensurePeer(initiator: boolean) {
+  if (!room?.guestId || peer || typeof RTCPeerConnection === "undefined") return;
+  transport = "connecting";
+  peer = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:global.stun.twilio.com:3478" }] });
+  peer.onicecandidate = event => { if (event.candidate) void sendSignal({ type: "ice", candidate: event.candidate.toJSON() }); };
+  peer.onconnectionstatechange = () => { if (!peer || ["failed", "disconnected", "closed"].includes(peer.connectionState)) transport = "fallback"; };
+  peer.ondatachannel = event => attachDataChannel(event.channel);
+  if (initiator) {
+    attachDataChannel(peer.createDataChannel("high-noon-actions", { ordered: true }));
+    const offer = await peer.createOffer(); await peer.setLocalDescription(offer);
+    await sendSignal({ type: "offer", sdp: offer });
+  }
+}
+
+async function handleSignal(payload: { type?: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }) {
+  if (!room || !payload.type || typeof RTCPeerConnection === "undefined") return;
+  const id = await userId();
+  const initiator = room.hostId === id;
+  if (payload.type === "offer" && !initiator && payload.sdp) {
+    await ensurePeer(false); if (!peer) return;
+    await peer.setRemoteDescription(payload.sdp); const answer = await peer.createAnswer(); await peer.setLocalDescription(answer); await sendSignal({ type: "answer", sdp: answer });
+  } else if (payload.type === "answer" && initiator && payload.sdp && peer) await peer.setRemoteDescription(payload.sdp);
+  else if (payload.type === "ice" && payload.candidate && peer) await peer.addIceCandidate(payload.candidate).catch(() => undefined);
+}
 
 function requireClient(): SupabaseClient {
   if (!client) throw new MultiplayerError("Multiplayer is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.");
@@ -73,10 +143,10 @@ function explain(error: { message: string; code?: string }): MultiplayerError {
 async function userId() {
   const supabase = requireClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (user) return user.id;
+  if (user) return localUserId = user.id;
   const { data, error } = await supabase.auth.signInAnonymously();
   if (error || !data.user) throw explain(error ?? { message: "Anonymous sign-in did not return a user." });
-  return data.user.id;
+  return localUserId = data.user.id;
 }
 
 function roomCode() {
@@ -144,6 +214,7 @@ export const multiplayer: MultiplayerService = {
     } finally {
       // Local state must not retain a departed room when the remote cleanup fails.
       room = null;
+      closePeer();
     }
   },
 
@@ -151,14 +222,16 @@ export const multiplayer: MultiplayerService = {
     if (!room || !client) return () => undefined;
     channel?.unsubscribe();
     const code = room.code;
-    channel = client.channel(`duel-room-${code}`).on("postgres_changes", { event: "*", schema: "public", table: "duel_rooms", filter: `code=eq.${code}` }, payload => {
+    channel = client.channel(`duel-room-${code}`).on("broadcast", { event: "webrtc" }, payload => { void handleSignal(payload.payload as { type?: string; sdp?: RTCSessionDescriptionInit; candidate?: RTCIceCandidateInit }); }).on("postgres_changes", { event: "*", schema: "public", table: "duel_rooms", filter: `code=eq.${code}` }, payload => {
       if (payload.eventType === "DELETE") { room = null; onRoom(null); return; }
-      room = mapRoom(payload.new as RoomRow);
-      onRoom(room);
+       room = mapRoom(payload.new as RoomRow);
+       onRoom(room);
+       void userId().then(id => { if (room?.guestId && room.hostId === id) void ensurePeer(true); });
     }).subscribe(status => {
       if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") onError("Realtime connection failed. Confirm Realtime is enabled for public.duel_rooms.");
+      if (status === "SUBSCRIBED") void userId().then(id => { if (room?.guestId && room.hostId === id) window.setTimeout(() => { void ensurePeer(true); }, 300); });
     });
-    return () => { channel?.unsubscribe(); channel = null; };
+    return () => { channel?.unsubscribe(); channel = null; closePeer(); };
   },
 
   async requestQuickMatch(mode) {
@@ -212,6 +285,8 @@ export const multiplayer: MultiplayerService = {
     const current = room.roundState.round;
     if (room.status !== "playing" || !current || current.id !== roundId || current.winner) throw new MultiplayerError("That round has already ended.");
     const gameMode = current.gameMode ?? room.mode;
+    if (gameMode === "trail-trace" && (!Number.isFinite(payload?.score) || !Number.isFinite(payload?.progress) || !Number.isFinite(payload?.accuracy) || payload?.reachedEnd !== true || payload!.score! < 0 || payload!.score! > 108 || payload!.progress! < minimumTrailProgress || payload!.progress! > 100 || payload!.accuracy! < minimumTrailAccuracy || payload!.accuracy! > 100)) throw new MultiplayerError("Finish the trail with a steady line before submitting.");
+    if (gameMode === "rock-paper-scissors" && !["rock", "paper", "scissors"].includes(payload?.choice ?? "")) throw new MultiplayerError("Choose rock, paper, or scissors.");
     if (gameMode === "bottle-shot" && (!current.endAt || Date.now() < Date.parse(current.endAt))) throw new MultiplayerError("Bottle Shot scores unlock when the 30-second round ends.");
     const actionKey = room.hostId === id ? "hostAction" : "guestAction";
     if (current[actionKey]) throw new MultiplayerError("You already acted this round.");
@@ -231,20 +306,26 @@ export const multiplayer: MultiplayerService = {
     const host = current.hostAction;
     const guest = current.guestAction;
     if (!host && !guest) return room;
-    if ((gameMode === "trail-trace" || gameMode === "bottle-shot" || gameMode === "dust-bluff") && (!host || !guest)) return room;
+    const hinted = peerActions.get(roundId);
+    const hostAction = host ?? hinted?.hostAction;
+    const guestAction = guest ?? hinted?.guestAction;
+    if ((gameMode === "trail-trace" || gameMode === "bottle-shot" || gameMode === "rock-paper-scissors") && (!hostAction || !guestAction)) return room;
     const winner = gameMode === "trail-trace" || gameMode === "bottle-shot"
-      ? (host!.score ?? 0) >= (guest!.score ?? 0) ? "host" : "guest"
-      : gameMode === "dust-bluff"
-        ? resolveDustWinner(current.hostHand ?? 0, current.guestHand ?? 0, host!.choice!, guest!.choice!)
-      : host?.falseStart ? "guest" : guest?.falseStart ? "host" : !guest || (host && host.at <= guest.at) ? "host" : "guest";
+      ? (hostAction!.score ?? 0) >= (guestAction!.score ?? 0) ? "host" : "guest"
+      : gameMode === "rock-paper-scissors"
+        ? resolveRpsWinner(hostAction!.choice!, guestAction!.choice!)
+       : host?.falseStart ? "guest" : guest?.falseStart ? "host" : !guest || (host && host.at <= guest.at) ? "host" : "guest";
     const hostWins = (current.seriesHostWins ?? 0) + (winner === "host" ? 1 : 0);
     const guestWins = (current.seriesGuestWins ?? 0) + (winner === "guest" ? 1 : 0);
-    const isSeries = room.mode === "showdown-series" || gameMode === "dust-bluff";
-    return updateRoom({ round_state: { ...room.roundState, round: { ...current, winner, resolvedAt: new Date().toISOString(), ...(isSeries ? { seriesHostWins: hostWins, seriesGuestWins: guestWins, matchWinner: hostWins === 3 ? "host" : guestWins === 3 ? "guest" : undefined } : {}) } } });
+    const isSeries = room.mode === "showdown-series" || gameMode === "rock-paper-scissors";
+    return updateRoom({ round_state: { ...room.roundState, round: { ...current, hostAction, guestAction, winner, resolvedAt: new Date().toISOString(), ...(isSeries ? { seriesHostWins: hostWins, seriesGuestWins: guestWins, matchWinner: hostWins === 3 ? "host" : guestWins === 3 ? "guest" : undefined } : {}) } } });
   },
+  sendLiveAction(event) { if (transport !== "connected" || !dataChannel) return false; try { dataChannel.send(JSON.stringify({ type: "action", event })); return true; } catch { transport = "fallback"; return false; } },
+  onLiveEvent(listener) { liveListener = listener; return () => { if (liveListener === listener) liveListener = undefined; }; },
+  transportStatus: () => transport,
 };
 
-function resolveDustWinner(hostHand: number, guestHand: number, host: import("../types").DustBluffChoice, guest: import("../types").DustBluffChoice) {
-  const beats: Record<import("../types").DustBluffChoice, import("../types").DustBluffChoice> = { draw: "hold", hold: "bluff", bluff: "draw" };
-  return host === guest ? hostHand >= guestHand ? "host" : "guest" : beats[host] === guest ? "host" : "guest";
+function resolveRpsWinner(host: RpsChoice, guest: RpsChoice) {
+  const beats: Record<RpsChoice, RpsChoice> = { rock: "scissors", paper: "rock", scissors: "paper" };
+  return host === guest ? "tie" : beats[host] === guest ? "host" : "guest";
 }
