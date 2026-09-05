@@ -108,8 +108,14 @@ async function roomAction(action: () => Promise<void>) {
   try { await action(); } catch (error) { multiplayerNotice = error instanceof Error ? error.message : "Unable to update the room."; }
   finally { multiplayerBusy = false; if (page === "multiplayer") render(); }
 }
-function createRoom() { return roomAction(async () => { const selectedMode = root.querySelector<HTMLSelectElement>("#room-mode")?.value as GameMode | undefined; multiplayerUserId = await multiplayer.authenticate(); multiplayerRoom = await multiplayer.createRoom(selectedMode); multiplayerNotice = `Room ${multiplayerRoom.code} created. Share the code with your opponent.`; listenToRoom(); }); }
-function joinRoom() { return roomAction(async () => { const code = root.querySelector<HTMLInputElement>("#room-code")?.value ?? ""; multiplayerUserId = await multiplayer.authenticate(); multiplayerRoom = await multiplayer.joinRoom(code); multiplayerNotice = `Joined room ${multiplayerRoom.code}. Ready up when you are set.`; listenToRoom(); }); }
+function createRoom() {
+  const selectedMode = root.querySelector<HTMLSelectElement>("#room-mode")?.value as GameMode | undefined;
+  return roomAction(async () => { multiplayerUserId = await multiplayer.authenticate(); multiplayerRoom = await multiplayer.createRoom(selectedMode); multiplayerNotice = `Room ${multiplayerRoom.code} created. Share the code with your opponent.`; listenToRoom(); });
+}
+function joinRoom() {
+  const code = root.querySelector<HTMLInputElement>("#room-code")?.value ?? "";
+  return roomAction(async () => { multiplayerUserId = await multiplayer.authenticate(); multiplayerRoom = await multiplayer.joinRoom(code); multiplayerNotice = `Joined room ${multiplayerRoom.code}. Ready up when you are set.`; listenToRoom(); });
+}
 function toggleReady() { return roomAction(async () => { multiplayerRoom = await multiplayer.setReady(!(multiplayerRoom?.hostId === multiplayerUserId ? multiplayerRoom?.roundState.hostReady : multiplayerRoom?.roundState.guestReady)); }); }
 function leaveRoom() { return roomAction(async () => { await multiplayer.leaveRoom(); stopRoomSubscription?.(); stopRoomSubscription = undefined; multiplayerRoom = null; multiplayerNotice = "You left the room."; }); }
 
