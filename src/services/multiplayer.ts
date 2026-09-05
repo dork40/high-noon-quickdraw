@@ -1,5 +1,5 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
-import type { GameMode, Room, RoomRoundState, RoomStatus } from "../types";
+import type { GameMode, MultiplayerRound, QuickMatchQueueEntry, Room, RoomRoundState, RoomStatus } from "../types";
 
 type RoomRow = {
   code: string;
@@ -9,6 +9,13 @@ type RoomRow = {
   status: RoomStatus;
   round_state: RoomRoundState | null;
   created_at: string;
+};
+type QuickMatchQueueRow = {
+  user_id: string;
+  mode: GameMode;
+  room_code: string | null;
+  created_at: string;
+  matched_at: string | null;
 };
 
 export class MultiplayerError extends Error {}
@@ -21,7 +28,12 @@ export interface MultiplayerService {
   setReady(ready: boolean): Promise<Room>;
   leaveRoom(): Promise<void>;
   subscribeToRoom(onRoom: (room: Room | null) => void, onError: (message: string) => void): () => void;
-  publishRoundState(event: NonNullable<RoomRoundState["event"]>): Promise<Room>;
+  requestQuickMatch(mode: GameMode): Promise<Room | null>;
+  cancelQuickMatch(): Promise<Room | null>;
+  subscribeToQuickMatch(onMatch: (room: Room) => void, onError: (message: string) => void): () => void;
+  startRound(round: MultiplayerRound): Promise<Room>;
+  submitRoundAction(roundId: string, reactionMs: number, falseStart: boolean): Promise<Room>;
+  resolveRound(roundId: string): Promise<Room>;
 }
 
 const url = import.meta.env.VITE_SUPABASE_URL;
@@ -29,6 +41,7 @@ const key = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 const client: SupabaseClient | null = url && key ? createClient(url, key) : null;
 let room: Room | null = null;
 let channel: RealtimeChannel | null = null;
+let quickMatchChannel: RealtimeChannel | null = null;
 
 function requireClient(): SupabaseClient {
   if (!client) throw new MultiplayerError("Multiplayer is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_PUBLISHABLE_KEY.");
@@ -46,9 +59,13 @@ function mapRoom(row: RoomRow): Room {
     createdAt: row.created_at,
   };
 }
+function mapQueueEntry(row: QuickMatchQueueRow): QuickMatchQueueEntry {
+  return { userId: row.user_id, mode: row.mode, roomCode: row.room_code, createdAt: row.created_at, matchedAt: row.matched_at };
+}
 
 function explain(error: { message: string; code?: string }): MultiplayerError {
   if (error.code === "42P01" || /duel_rooms.*does not exist/i.test(error.message)) return new MultiplayerError("The duel_rooms table is missing. Run the SQL setup in README.md.");
+  if (error.code === "42883" || /quick_match_queue|quick_match/i.test(error.message)) return new MultiplayerError("Quick Game is not set up. Run the matchmaking SQL in README.md.");
   if (error.code === "42501" || /row-level security|permission denied/i.test(error.message)) return new MultiplayerError("Supabase denied this room action. Check the duel_rooms RLS policies in README.md.");
   return new MultiplayerError(error.message);
 }
@@ -139,8 +156,73 @@ export const multiplayer: MultiplayerService = {
     return () => { channel?.unsubscribe(); channel = null; };
   },
 
-  async publishRoundState(event) {
-    if (!room) throw new MultiplayerError("Create or join a room first.");
-    return updateRoom({ round_state: { ...room.roundState, event } });
+  async requestQuickMatch(mode) {
+    await userId();
+    const { data, error } = await requireClient().rpc("request_quick_match", { p_mode: mode }).maybeSingle<RoomRow>();
+    if (error) throw explain(error);
+    return data ? room = mapRoom(data) : null;
+  },
+
+  async cancelQuickMatch() {
+    await userId();
+    const { data, error } = await requireClient().rpc("cancel_quick_match").maybeSingle<RoomRow>();
+    if (error) throw explain(error);
+    return data ? room = mapRoom(data) : null;
+  },
+
+  subscribeToQuickMatch(onMatch, onError) {
+    if (!client) return () => undefined;
+    quickMatchChannel?.unsubscribe();
+    let active = true;
+    void userId().then(id => {
+      if (!active) return;
+      quickMatchChannel = client.channel(`quick-match-${id}`).on("postgres_changes", { event: "*", schema: "public", table: "quick_match_queue", filter: `user_id=eq.${id}` }, async payload => {
+        if (!active) return;
+        if (payload.eventType === "DELETE") return;
+        const entry = mapQueueEntry(payload.new as QuickMatchQueueRow);
+        if (!entry.roomCode) return;
+        const { data, error } = await client.from("duel_rooms").select().eq("code", entry.roomCode).maybeSingle<RoomRow>();
+        if (error) { onError(explain(error).message); return; }
+        if (data) { room = mapRoom(data); onMatch(room); }
+      }).subscribe(status => {
+        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") onError("Quick Game updates failed. Confirm Realtime is enabled for public.quick_match_queue.");
+      });
+    }).catch(error => onError(error instanceof Error ? error.message : "Could not listen for Quick Game matches."));
+    return () => { active = false; quickMatchChannel?.unsubscribe(); quickMatchChannel = null; };
+  },
+
+  async startRound(round) {
+    const id = await userId();
+    if (!room || room.hostId !== id || !room.guestId || !room.roundState.hostReady || !room.roundState.guestReady || (room.status !== "ready" && !room.roundState.round?.winner)) throw new MultiplayerError("Both players must be ready before the host starts a round.");
+    return updateRoom({ round_state: { ...room.roundState, round }, status: "playing" });
+  },
+
+  async submitRoundAction(roundId, reactionMs, falseStart) {
+    const id = await userId();
+    if (!room || (room.hostId !== id && room.guestId !== id)) throw new MultiplayerError("You are not seated in this room.");
+    // Read immediately before writing so a received opponent action is retained.
+    const { data, error } = await requireClient().from("duel_rooms").select().eq("code", room.code).single<RoomRow>();
+    if (error) throw explain(error);
+    room = mapRoom(data);
+    const current = room.roundState.round;
+    if (room.status !== "playing" || !current || current.id !== roundId || current.winner) throw new MultiplayerError("That round has already ended.");
+    const actionKey = room.hostId === id ? "hostAction" : "guestAction";
+    if (current[actionKey]) throw new MultiplayerError("You already acted this round.");
+    return updateRoom({ round_state: { ...room.roundState, round: { ...current, [actionKey]: { at: new Date().toISOString(), reactionMs, ...(falseStart ? { falseStart: true } : {}) } } } });
+  },
+
+  async resolveRound(roundId) {
+    const id = await userId();
+    if (!room || room.hostId !== id) throw new MultiplayerError("Only the host can resolve a round.");
+    const { data, error } = await requireClient().from("duel_rooms").select().eq("code", room.code).single<RoomRow>();
+    if (error) throw explain(error);
+    room = mapRoom(data);
+    const current = room.roundState.round;
+    if (!current || current.id !== roundId || current.winner) return room;
+    const host = current.hostAction;
+    const guest = current.guestAction;
+    if (!host && !guest) return room;
+    const winner = host?.falseStart ? "guest" : guest?.falseStart ? "host" : !guest || (host && host.at <= guest.at) ? "host" : "guest";
+    return updateRoom({ round_state: { ...room.roundState, round: { ...current, winner, resolvedAt: new Date().toISOString() } } });
   },
 };

@@ -3,8 +3,8 @@ import type { DuelResult, DuelWord, GameSettings } from "../types";
 export const settings: GameSettings = {
   minWaitMs: 2000,
   maxWaitMs: 6000,
-  minOpponentReactionMs: 280,
-  maxOpponentReactionMs: 850,
+  minOpponentReactionMs: 550,
+  maxOpponentReactionMs: 1400,
 };
 
 export const randomBetween = (minimum: number, maximum: number): number =>
