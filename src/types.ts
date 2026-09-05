@@ -6,7 +6,21 @@ export type RoundPhase = DrawFirePhase | WordDuelPhase | OriginalQuickDrawPhase;
 export type DuelOutcome = "win" | "loss" | "false-start";
 
 export interface Player { id: string; name: string; wins: number; losses: number; }
-export interface Room { code: string; players: Player[]; status: "lobby" | "playing"; }
+export type RoomStatus = "lobby" | "ready" | "playing";
+export interface RoomRoundState {
+  hostReady: boolean;
+  guestReady: boolean;
+  event?: { type: string; at: string; payload?: Record<string, unknown> };
+}
+export interface Room {
+  code: string;
+  hostId: string;
+  guestId: string | null;
+  mode: GameMode;
+  status: RoomStatus;
+  roundState: RoomRoundState;
+  createdAt: string;
+}
 export interface BaseRound { number: number; opponentReactionMs?: number; result?: DuelResult; }
 export interface DrawFireRound extends BaseRound { mode: "draw-fire"; phase: DrawFirePhase; drawAt?: number; }
 export interface WordDuelRound extends BaseRound { mode: "word-duel"; phase: WordDuelPhase; word?: DuelWord; wordAt?: number; }

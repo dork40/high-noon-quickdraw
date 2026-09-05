@@ -11,6 +11,10 @@
 .duel[data-phase="aim"] .hand { bottom:184px; transform:rotate(-34deg); }
 .hand i { height:12px; border-radius:2px 5px 2px 1px; box-shadow:inset 0 2px #4b4248; }.hand i::before { content:""; position:absolute; right:-9px; top:3px; width:15px; height:5px; background:#171217; border-radius:0 3px 3px 0; }.hand i::after { content:""; position:absolute; left:7px; top:10px; width:12px; height:22px; background:#21171b; transform:skew(-17deg); box-shadow:10px 9px 0 -8px #171217; }
 .waiting-note { margin:0; color:#e1b48e; font:11px var(--mono); letter-spacing:.16em; }
+.slots small { display:block; margin-top:7px; color:var(--gold); font:10px var(--mono); letter-spacing:.1em; }
+.lobby-status,.lobby-error { position:absolute; top:20px; right:22px; color:var(--gold); font:11px var(--mono); letter-spacing:.14em; }
+.lobby-error { color:#ff9e7f; }.lobby-message { min-height:19px; }.lobby code { color:var(--gold); }
+.lobby select { width:100%; height:47px; margin-top:6px; padding:0 8px; border:1px solid var(--line); color:var(--paper); background:#160e13; font:12px var(--mono); }
 .rules { grid-template-columns:repeat(4,1fr); }
 .word-entry { grid-template-columns:1fr; }
 .word-entry label { grid-column:auto; }

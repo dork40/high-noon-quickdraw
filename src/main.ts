@@ -1,6 +1,7 @@
 import "./style.css";
 import { createRoundTiming, falseStart, randomDuelWord, resolveShot } from "./game/rules";
-import type { DuelResult, GameMode, Round } from "./types";
+import { multiplayer } from "./services/multiplayer";
+import type { DuelResult, GameMode, Room, Round } from "./types";
 
 type Page = "home" | "mode-select" | "game" | "multiplayer" | "how-to";
 const root = document.querySelector<HTMLDivElement>("#app")!;
@@ -10,6 +11,11 @@ let round: Round = { number: 0, mode: "draw-fire", phase: "menu" };
 let drawTimer: number | undefined;
 let opponentTimer: number | undefined;
 let stats = readStats();
+let multiplayerRoom: Room | null = null;
+let multiplayerUserId: string | null = null;
+let multiplayerNotice = "";
+let multiplayerBusy = false;
+let stopRoomSubscription: (() => void) | undefined;
 
 function readStats() {
   try { return JSON.parse(localStorage.getItem("high-noon-stats") ?? "{\"wins\":0,\"losses\":0,\"best\":null}") as { wins: number; losses: number; best: number | null }; }
@@ -19,13 +25,15 @@ function saveStats() { try { localStorage.setItem("high-noon-stats", JSON.string
 function clearTimers() { window.clearTimeout(drawTimer); window.clearTimeout(opponentTimer); }
 function nav(next: Page) {
   clearTimers();
+  if (next !== "multiplayer") { stopRoomSubscription?.(); stopRoomSubscription = undefined; }
   page = next;
   round = mode === "word-duel"
     ? { number: round.number, mode: "word-duel", phase: "menu" }
     : mode === "original-quick-draw"
       ? { number: round.number, mode: "original-quick-draw", phase: "menu" }
-      : { number: round.number, mode: "draw-fire", phase: "menu" };
+       : { number: round.number, mode: "draw-fire", phase: "menu" };
   render();
+  if (next === "multiplayer" && multiplayerRoom) listenToRoom();
 }
 
 function layout(content: string) {
@@ -59,7 +67,15 @@ function gameView() {
 }
 
 function multiplayerView() {
-  return layout(`<section class="page-header"><p class="eyebrow">TWO GUNSLINGERS. ONE STREET.</p><h1>Multiplayer</h1><p>Ride with a friend soon. Online duels are being prepared for the next frontier.</p></section><section class="lobby"><div class="coming">COMING SOON</div><div class="slots"><div><span>PLAYER ONE</span><b>YOUR SEAT</b></div><div><span>PLAYER TWO</span><b>OPEN SEAT</b></div></div><div class="lobby-controls"><button class="primary" disabled>CREATE ROOM</button><label>ROOM CODE<input disabled placeholder="ABC-123"></label><button class="outline" disabled>JOIN ROOM</button></div><p>Room codes and live matches will appear here when the service rides in.</p></section>`);
+  if (!multiplayer.isConfigured()) return layout(`<section class="page-header"><p class="eyebrow">TWO GUNSLINGERS. ONE STREET.</p><h1>Multiplayer</h1><p>Invite a friend to a live lobby, then ready up for the next duel.</p></section><section class="lobby"><div class="lobby-error" role="alert">SUPABASE CONFIGURATION REQUIRED</div><p>Add <code>VITE_SUPABASE_URL</code> and <code>VITE_SUPABASE_PUBLISHABLE_KEY</code> to your environment, then redeploy. See <code>.env.example</code> and README.md for setup.</p></section>`);
+  const room = multiplayerRoom;
+  const isHost = room?.hostId === multiplayerUserId;
+  const ownReady = isHost ? room?.roundState.hostReady : room?.roundState.guestReady;
+  const disabled = multiplayerBusy ? "disabled" : "";
+  const hostLabel = room ? (isHost ? "YOU (HOST)" : "HOST CONNECTED") : "YOUR SEAT";
+  const guestLabel = room?.guestId ? (isHost ? "GUEST CONNECTED" : "YOU") : "OPEN SEAT";
+  const message = multiplayerNotice || (room ? (room.status === "ready" ? "Both gunslingers are ready. The shared round-state channel is live." : room.guestId ? "Both players must ready up." : "Share this code with your opponent, then wait for them to join.") : "Create a private room or join your friend's code. Anonymous sign-in happens automatically.");
+  return layout(`<section class="page-header"><p class="eyebrow">TWO GUNSLINGERS. ONE STREET.</p><h1>Multiplayer</h1><p>Private room codes, anonymous seats, and live lobby updates.</p></section><section class="lobby"><div class="lobby-status">${room ? `ROOM ${room.code} · ${room.status.toUpperCase()}` : "LIVE LOBBY"}</div><div class="slots"><div><span>PLAYER ONE</span><b>${hostLabel}</b><small>${room?.roundState.hostReady ? "READY" : "WAITING"}</small></div><div><span>PLAYER TWO</span><b>${guestLabel}</b><small>${room?.roundState.guestReady ? "READY" : "WAITING"}</small></div></div>${room ? `<div class="lobby-controls"><button class="primary" id="ready-room" ${disabled}>${ownReady ? "NOT READY" : "READY UP"}</button><button class="outline" id="leave-room" ${disabled}>LEAVE ROOM</button></div><p class="lobby-message" aria-live="polite">${message}</p>` : `<div class="lobby-controls"><button class="primary" id="create-room" ${disabled}>CREATE ROOM</button><label>DUEL MODE<select id="room-mode" ${disabled}><option value="original-quick-draw">QUICK DRAW</option><option value="word-duel">WORD DUEL</option><option value="draw-fire">DRAW &amp; FIRE</option></select></label><label>ROOM CODE<input id="room-code" maxlength="6" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="ABC123" ${disabled}></label><button class="outline" id="join-room" ${disabled}>JOIN ROOM</button></div><p class="lobby-message" aria-live="polite">${message}</p>`}</section>`);
 }
 
 function howToView() {
@@ -72,8 +88,30 @@ function render() {
   root.querySelectorAll<HTMLElement>("[data-mode]").forEach(button => button.addEventListener("click", () => { mode = button.dataset.mode as GameMode; nav("game"); }));
   root.querySelector("#shot-button")?.addEventListener("click", takeAction);
   root.querySelector<HTMLFormElement>("#word-form")?.addEventListener("submit", event => { event.preventDefault(); submitWord(); });
+  root.querySelector("#create-room")?.addEventListener("click", () => void createRoom());
+  root.querySelector("#join-room")?.addEventListener("click", () => void joinRoom());
+  root.querySelector("#ready-room")?.addEventListener("click", () => void toggleReady());
+  root.querySelector("#leave-room")?.addEventListener("click", () => void leaveRoom());
   if (round.mode === "word-duel" && round.phase === "word") window.setTimeout(() => root.querySelector<HTMLInputElement>("#word-input")?.focus(), 0);
 }
+
+function listenToRoom() {
+  stopRoomSubscription?.();
+  stopRoomSubscription = multiplayer.subscribeToRoom(nextRoom => {
+    multiplayerRoom = nextRoom;
+    if (!nextRoom) multiplayerNotice = "The host left the room.";
+    if (page === "multiplayer") render();
+  }, message => { multiplayerNotice = message; if (page === "multiplayer") render(); });
+}
+async function roomAction(action: () => Promise<void>) {
+  multiplayerBusy = true; multiplayerNotice = ""; render();
+  try { await action(); } catch (error) { multiplayerNotice = error instanceof Error ? error.message : "Unable to update the room."; }
+  finally { multiplayerBusy = false; if (page === "multiplayer") render(); }
+}
+function createRoom() { return roomAction(async () => { const selectedMode = root.querySelector<HTMLSelectElement>("#room-mode")?.value as GameMode | undefined; multiplayerUserId = await multiplayer.authenticate(); multiplayerRoom = await multiplayer.createRoom(selectedMode); multiplayerNotice = `Room ${multiplayerRoom.code} created. Share the code with your opponent.`; listenToRoom(); }); }
+function joinRoom() { return roomAction(async () => { const code = root.querySelector<HTMLInputElement>("#room-code")?.value ?? ""; multiplayerUserId = await multiplayer.authenticate(); multiplayerRoom = await multiplayer.joinRoom(code); multiplayerNotice = `Joined room ${multiplayerRoom.code}. Ready up when you are set.`; listenToRoom(); }); }
+function toggleReady() { return roomAction(async () => { multiplayerRoom = await multiplayer.setReady(!(multiplayerRoom?.hostId === multiplayerUserId ? multiplayerRoom?.roundState.hostReady : multiplayerRoom?.roundState.guestReady)); }); }
+function leaveRoom() { return roomAction(async () => { await multiplayer.leaveRoom(); stopRoomSubscription?.(); stopRoomSubscription = undefined; multiplayerRoom = null; multiplayerNotice = "You left the room."; }); }
 
 function beginRound() {
   const timing = createRoundTiming();
