@@ -1,7 +1,7 @@
 {
   "name": "high-noon-showdown",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.3.0",
   "type": "module",
   "scripts": { "dev": "vite", "build": "tsc && vite build", "preview": "vite preview" },
   "devDependencies": { "typescript": "^5.7.3", "vite": "^6.1.0" }

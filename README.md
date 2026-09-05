@@ -1,6 +1,6 @@
 # High Noon Showdown
 
-High Noon Showdown v1.1 is an original Wild West versus-AI browser game. Face Ash Mercer in either a precision typing duel or a deliberate quick-draw duel. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
+High Noon Showdown v1.3 is an original Wild West versus-AI browser game. Face Ash Mercer in an original one-shot quick draw, a precision typing duel, or a deliberate draw-and-fire duel. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
 
 ## Run
 
@@ -13,15 +13,16 @@ Use `npm run build` to type-check and create a production build.
 
 ## Modes And Controls
 
-- **Word Duel:** after the random wait, exactly one of `SHOOT`, `DRAW`, or `POW` appears. The word input is automatically focused for desktop and mobile keyboards. Type the displayed word exactly and press Enter or tap **Fire Word**. Incorrect text does not shoot while the AI continues reacting.
-- **Draw & Fire:** wait for `DRAW!`, then click/tap **Draw Gun** or press `Space`. Fire using a second click/tap/Space action before the AI reacts.
-- In either mode, starting a draw action before the signal is a false start and loses the round.
+- **Original Quick Draw:** after a random 2-6 second wait, `DRAW!` appears. Click, tap, or press `Space` once to shoot before the AI reacts. There is no separate gun-draw action.
+- **Word Duel:** after a random 2-6 second wait, exactly one of `SHOOT`, `DRAW`, or `POW` appears. The word input is automatically focused for desktop and mobile keyboards. Type the displayed word exactly and press Enter. Incorrect text does not shoot while the AI continues reacting.
+- **Draw & Fire:** after a random 2-6 second wait, `DRAW!` appears. Click/tap **Draw Gun** or press `Space` to visibly clear the revolver from its holster, then use a distinct second click/tap/Space action to fire before the AI reacts.
+- In every mode, acting before the signal is a false start and loses the round.
 
-The AI has a random 280-850 ms reaction. Wins, losses, and the fastest successful reaction are stored locally when browser storage is available.
+The AI has a random 280-850 ms reaction. Reaction time runs from the visible signal to the final word submission or shot, so the draw action is part of Draw & Fire's pressure. Wins, losses, and the fastest successful reaction are stored locally when browser storage is available.
 
 ## Files
 
-- `src/types.ts` - shared multiplayer types plus separate Word Duel and Draw & Fire round states
+- `src/types.ts` - shared multiplayer types plus separate Original Quick Draw, Word Duel, and Draw & Fire round states
 - `src/game/rules.ts` - timing, word selection, and pure duel resolution rules
 - `src/main.ts` - browser UI and input wiring
 - `src/services/multiplayer.ts` - multiplayer service boundary and unavailable stubs
