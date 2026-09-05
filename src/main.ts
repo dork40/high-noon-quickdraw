@@ -1,12 +1,12 @@
 import "./style.css";
-import { aiBottleScore, aiDustChoice, bottleRoundMs, bottleScore, bottleTargetMs, createBottleSchedule, createRoundTiming, dustHandLabel, falseStart, randomBetween, randomDuelWord, resolveDustBluff, resolveShot, settings } from "./game/rules";
+import { aiBottleScore, aiDustChoice, bottleRoundMs, bottleScore, bottleTargetMs, bottlesPerWave, createBottleSchedule, createRoundTiming, dustDecisionMs, dustHandLabel, falseStart, randomBetween, randomDuelWord, resolveDustBluff, resolveShot, settings } from "./game/rules";
 import { isMuted, loadMuted, playSound, toggleMuted } from "./game/audio";
 import { aiTrailScore, createTrail, scoreTrail, type TrailPoint } from "./game/trail";
 import { multiplayer } from "./services/multiplayer";
 import type { AiDifficulty, DuelResult, DirectGameMode, DustBluffChoice, GameMode, MultiplayerRound, Room, Round } from "./types";
 
 type Page = "home" | "mode-select" | "game" | "multiplayer" | "how-to";
-const appVersion = "2.1.0";
+const appVersion = "2.2.0";
 const root = document.querySelector<HTMLDivElement>("#app")!;
 let page: Page = "home";
 let mode: GameMode = "original-quick-draw";
@@ -113,17 +113,17 @@ function bottleShotView(seed: number, startAt: number | undefined, endAt: number
   const now = Date.now();
   const waiting = startAt !== undefined && now < startAt;
   const ended = endAt !== undefined && now >= endAt;
-  const targetIndex = startAt === undefined ? -1 : Math.floor((now - startAt) / bottleTargetMs);
-  const target = !waiting && !ended && targetIndex >= 0 ? createBottleSchedule(seed)[targetIndex] : undefined;
+  const waveIndex = startAt === undefined ? -1 : Math.floor((now - startAt) / bottleTargetMs);
+  const bottles = !waiting && !ended && waveIndex >= 0 ? createBottleSchedule(seed).slice(waveIndex * bottlesPerWave, (waveIndex + 1) * bottlesPerWave) : [];
   const seconds = endAt ? Math.max(0, Math.ceil((endAt - now) / 1000)) : 30;
-  const prompt = result ? `You scored ${score}; ${opponentScore === undefined ? "Ash" : "your rival"} scored ${opponentScore ?? 0}.` : waiting ? "Get set. The shared bottle run starts together." : ended ? (submitted ? "Score sent. Waiting for the host to settle the round." : "Time is up. Sending your score.") : "Shoot green and blue bottles for +10. Red bottles cost 10.";
-  const bottle = target ? `<button class="bottle bottle-${target.kind}" data-bottle-id="${target.id}" style="left:${target.x}%;top:${target.y}%" aria-label="Shoot ${target.kind} bottle">${target.kind === "red" ? "-10" : "+10"}</button>` : "";
-  return layout(`<section class="bottle-game"><div class="bottle-heading"><p class="eyebrow">${title}</p><h1>${result ?? (waiting ? "GET READY" : ended ? "TIME" : "BOTTLE SHOT")}</h1><p>${prompt}</p></div><div class="bottle-stats"><span><b>${seconds}</b> SEC</span><span><b>${score}</b> SCORE</span><span>GREEN / BLUE <b>+10</b></span><span>RED <b>-10</b></span></div><div class="bottle-range" aria-live="polite">${bottle}</div><p class="trace-hint">${waiting ? "TARGETS APPEAR ON THE BELL." : "TAP OR CLICK THE BOTTLE. EACH TARGET LASTS 1.5 SECONDS."}</p>${startAt === undefined ? `<button id="shot-button" class="primary">START BOTTLE SHOT</button>` : result ? `<div class="duel-actions">${title.startsWith("LIVE") && multiplayerRoom?.hostId === multiplayerUserId ? `<button id="next-round" class="primary">NEXT ROUND</button>` : ""}${title.startsWith("LIVE") ? `<button id="leave-duel" class="outline">LEAVE ROOM</button>` : ""}</div>` : ""}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR SCORE</span><b>${score}</b></div><div><span>${opponentScore === undefined ? "TARGET" : "RIVAL SCORE"}</span><b>${opponentScore ?? "--"}</b></div><div><span>ROUND TIME</span><b>30 SEC</b></div><div><span>MODE</span><b>BOTTLE SHOT</b></div></section>`);
+  const prompt = result ? `You scored ${score}; ${opponentScore === undefined ? "Ash" : "your rival"} scored ${opponentScore ?? 0}.` : waiting ? "Get set. The shared bottle run starts together." : ended ? (submitted ? "Score sent. Waiting for the host to settle the round." : "Time is up. Sending your score.") : "Shoot green and blue bottles for +10. Red bottles cost 10. Each bottle breaks after one hit.";
+  const bottleButtons = bottles.filter(target => !bottleHitIds.has(target.id)).map(target => `<button class="bottle bottle-${target.kind}" data-bottle-id="${target.id}" style="left:${target.x}%;top:${target.y}%" aria-label="Shoot ${target.kind} bottle">${target.kind === "red" ? "-10" : "+10"}</button>`).join("");
+  return layout(`<section class="bottle-game"><div class="bottle-heading"><p class="eyebrow">${title}</p><h1>${result ?? (waiting ? "GET READY" : ended ? "TIME" : "BOTTLE SHOT")}</h1><p>${prompt}</p></div><div class="bottle-stats"><span><b>${seconds}</b> SEC</span><span><b>${score}</b> SCORE</span><span>GREEN / BLUE <b>+10</b></span><span>RED <b>-10</b></span></div><div class="bottle-range" aria-live="polite">${bottleButtons}</div><p class="trace-hint">${waiting ? "SIX TARGETS APPEAR ON THE BELL." : "TAP OR CLICK EACH BOTTLE ONCE. SIX TARGETS CHANGE EVERY 1.5 SECONDS."}</p>${startAt === undefined ? `<button id="shot-button" class="primary">START BOTTLE SHOT</button>` : result ? `<div class="duel-actions">${title.startsWith("LIVE") && multiplayerRoom?.hostId === multiplayerUserId ? `<button id="next-round" class="primary">NEXT ROUND</button>` : ""}${title.startsWith("LIVE") ? `<button id="leave-duel" class="outline">LEAVE ROOM</button>` : ""}</div>` : ""}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR SCORE</span><b>${score}</b></div><div><span>${opponentScore === undefined ? "TARGET" : "RIVAL SCORE"}</span><b>${opponentScore ?? "--"}</b></div><div><span>ROUND TIME</span><b>30 SEC</b></div><div><span>MODE</span><b>BOTTLE SHOT</b></div></section>`);
 }
 
 function gameView() {
   if (multiplayerRoom?.status === "playing" && multiplayerRoom.roundState.round) return multiplayerGameView();
-  if (round.mode === "dust-bluff") return dustBluffView(round.playerHand, round.opponentHand, round.playerChoice, round.opponentChoice, round.result, `DUST BLUFF · ${aiDifficulty.toUpperCase()}`);
+  if (round.mode === "dust-bluff") return dustBluffView(round.playerHand, round.opponentHand, round.playerChoice, round.opponentChoice, round.result, `DUST BLUFF · ${aiDifficulty.toUpperCase()}`, [seriesPlayerWins, seriesOpponentWins], round.decisionEndsAt, undefined, round.number, seriesPlayerWins === 3 || seriesOpponentWins === 3);
   if (round.mode === "trail-trace") {
     const result = round.result;
     const prompt = result ? `${result.message} You ${round.playerScore} points. Ash ${result.opponentReactionMs} points.` : "Start at the left marker, keep your pointer near the trail, and reach its far end.";
@@ -145,11 +145,14 @@ function gameView() {
   return layout(`<section class="duel" data-phase="${phase}" data-result="${result?.outcome ?? ""}"><div class="duel-sky"><div class="duel-sun"></div><div class="cloud cloud-one"></div><div class="cloud cloud-two"></div></div><div class="horizon"></div><div class="street"></div><div class="opponent" aria-hidden="true"><span class="hat"></span><span class="head"></span><span class="torso"></span><span class="arm"></span></div><div class="gunslinger" aria-hidden="true"><span class="player-hat"></span><span class="player-body"></span><span class="hand"><i class="revolver"><b></b></i></span><span class="holster"></span><span class="flash"></span></div><div class="duel-panel"><p class="eyebrow">${quickDrawMode ? "ORIGINAL QUICK DRAW" : "WORD DUEL"} · ${aiDifficulty.toUpperCase()} · ROUND ${String(round.number || 1).padStart(2, "0")}</p><h1>${label}</h1><p class="duel-prompt" aria-live="assertive">${prompt}</p>${result ? `<div class="scoreline"><span>YOU ${result.reactionMs ? `${result.reactionMs} MS` : "EARLY"}</span><span>RIVAL ${result.opponentReactionMs} MS</span></div>` : ""}<div class="duel-controls">${action}${fullscreenButton()}</div></div></section><section class="scoreboard"><div><span>WINS</span><b>${stats.wins}</b></div><div><span>LOSSES</span><b>${stats.losses}</b></div><div><span>LOCAL BEST</span><b>${stats.best ? `${stats.best} MS` : "--"}</b></div><div><span>DIFFICULTY</span><b>${aiDifficulty.toUpperCase()}</b></div></section>`);
 }
 
-function dustBluffView(playerHand: number, opponentHand: number, playerChoice?: DustBluffChoice, opponentChoice?: DustBluffChoice, result?: DuelResult, title = "DUST BLUFF", seriesScore = [seriesPlayerWins, seriesOpponentWins]) {
+function dustBluffView(playerHand: number, opponentHand: number, playerChoice?: DustBluffChoice, opponentChoice?: DustBluffChoice, result?: DuelResult, title = "DUST BLUFF", seriesScore = [seriesPlayerWins, seriesOpponentWins], decisionEndsAt?: number, decisionStartsAt?: number, cardRound = round.number, matchWinner?: boolean, hostCanDeal = true) {
   const cards = (hand: number, hidden = false) => Array.from({ length: 3 }, (_, index) => `<span class="dust-card">${hidden ? "?" : Math.max(1, hand - index)}</span>`).join("");
-  const prompt = result ? result.message : playerChoice ? "Choice locked. Waiting for the other hand." : "Choose before the dust settles. Draw beats Hold, Hold beats Bluff, Bluff beats Draw. Matching choices compare hand strength.";
-  const actions = result ? `<button id="shot-button" class="primary">${mode === "showdown-series" && seriesPlayerWins < 3 && seriesOpponentWins < 3 ? "NEXT SERIES ROUND" : "PLAY AGAIN"}</button>` : `<div class="dust-actions">${(["draw", "hold", "bluff"] as DustBluffChoice[]).map(choice => `<button class="${choice === "bluff" ? "outline" : "primary"}" data-dust-choice="${choice}" ${playerChoice ? "disabled" : ""}>${choice.toUpperCase()}</button>`).join("")}</div>`;
-  return layout(`<section class="dust-game"><p class="eyebrow">${title}</p><h1>${result ? (result.outcome === "win" ? "YOU WIN" : "ASH TAKES IT") : "READ THE DUST"}</h1><div class="dust-hands"><div><span>YOUR THREE CARDS</span><div>${cards(playerHand)}</div><b>${dustHandLabel(playerHand)}</b></div><div><span>RIVAL'S THREE CARDS</span><div>${cards(opponentHand, !result && !opponentChoice)}</div><b>${result ? dustHandLabel(opponentHand) : "HIDDEN"}</b></div></div><p class="duel-prompt">${prompt}</p>${result ? `<p class="scoreline">YOU: ${playerChoice?.toUpperCase()} · RIVAL: ${opponentChoice?.toUpperCase()}</p>` : ""}${actions}${fullscreenButton()}</section>${mode === "showdown-series" ? `<section class="scoreboard"><div><span>SERIES YOU</span><b>${seriesScore[0]}</b></div><div><span>SERIES RIVAL</span><b>${seriesScore[1]}</b></div><div><span>FIRST TO</span><b>3</b></div><div><span>ROUND</span><b>${round.number}</b></div></section>` : ""}`);
+  const seconds = decisionEndsAt ? Math.max(0, Math.ceil((decisionEndsAt - Date.now()) / 1000)) : 0;
+  const decisionOpen = !decisionStartsAt || Date.now() >= decisionStartsAt;
+  const prompt = result ? (matchWinner ? `${result.message} ${result.outcome === "win" ? "You take the match." : "Your rival takes the match."}` : `${result.message} ${title.startsWith("LIVE") || title.startsWith("SHOWDOWN") ? "The host deals the next hand." : "Deal the next hand."}`) : !decisionOpen ? "Fresh hands are dealt. The decision bell is about to ring." : playerChoice ? "Choice locked. Waiting for the other hand." : "Choose before the dust settles. Draw beats Hold, Hold beats Bluff, Bluff beats Draw. Matching choices compare hand strength.";
+  const live = title.startsWith("LIVE") || title.startsWith("SHOWDOWN");
+  const actions = result ? (matchWinner && live ? `<button id="leave-duel" class="outline">LEAVE ROOM</button>` : live && !hostCanDeal ? `<p class="waiting-note">HOST DEALS THE NEXT HAND</p>` : `<button id="shot-button" class="primary">${matchWinner ? "PLAY NEW MATCH" : "NEXT HAND"}</button>`) : !decisionEndsAt ? `<button id="shot-button" class="primary">START MATCH</button>` : `<div class="dust-actions">${(["draw", "hold", "bluff"] as DustBluffChoice[]).map(choice => `<button class="${choice === "bluff" ? "outline" : "primary"}" data-dust-choice="${choice}" ${playerChoice || !decisionOpen || seconds === 0 ? "disabled" : ""}>${choice.toUpperCase()}</button>`).join("")}</div>`;
+  return layout(`<section class="dust-game"><p class="eyebrow">${title} · CARD ROUND ${String(cardRound).padStart(2, "0")}</p><h1>${result ? (matchWinner ? (result.outcome === "win" ? "MATCH WON" : "MATCH LOST") : result.outcome === "win" ? "ROUND WON" : "ROUND LOST") : "READ THE DUST"}</h1><div class="dust-hands"><div><span>YOUR THREE CARDS</span><div>${cards(playerHand)}</div><b>${dustHandLabel(playerHand)}</b></div><div><span>RIVAL'S THREE CARDS</span><div>${cards(opponentHand, !result && !opponentChoice)}</div><b>${result ? dustHandLabel(opponentHand) : "HIDDEN"}</b></div></div><p class="duel-prompt">${prompt}</p>${!result ? `<p class="waiting-note">${decisionOpen ? `DECISION TIME: ${seconds} SEC` : "CARDS DEALING"}</p>` : `<p class="scoreline">YOU: ${playerChoice?.toUpperCase()} · RIVAL: ${opponentChoice?.toUpperCase()}</p>`}${actions}${fullscreenButton()}</section><section class="scoreboard"><div><span>MATCH YOU</span><b>${seriesScore[0]}</b></div><div><span>MATCH RIVAL</span><b>${seriesScore[1]}</b></div><div><span>FIRST TO</span><b>3</b></div><div><span>CARD ROUND</span><b>${cardRound}</b></div></section>`);
 }
 
 function multiplayerGameView() {
@@ -167,7 +170,7 @@ function multiplayerGameView() {
   if (activeMode === "dust-bluff") {
     const title = `${room.mode === "showdown-series" ? "SHOWDOWN SERIES" : "LIVE DUST BLUFF"} · ROOM ${room.code}`;
     const result = ended ? { outcome: won ? "win" : "loss", opponentReactionMs: 0, message: shared.hostAction?.choice === shared.guestAction?.choice ? "Matching choices compare the displayed hand strength." : "Draw beats Hold, Hold beats Bluff, Bluff beats Draw." } as DuelResult : undefined;
-    return dustBluffView(isHost ? shared.hostHand! : shared.guestHand!, isHost ? shared.guestHand! : shared.hostHand!, mine?.choice, opponent?.choice, result, title, [isHost ? shared.seriesHostWins ?? 0 : shared.seriesGuestWins ?? 0, isHost ? shared.seriesGuestWins ?? 0 : shared.seriesHostWins ?? 0]).replace("id=\"shot-button\"", `id="next-round"`);
+    return dustBluffView(isHost ? shared.hostHand! : shared.guestHand!, isHost ? shared.guestHand! : shared.hostHand!, mine?.choice, opponent?.choice, result, title, [isHost ? shared.seriesHostWins ?? 0 : shared.seriesGuestWins ?? 0, isHost ? shared.seriesGuestWins ?? 0 : shared.seriesHostWins ?? 0], shared.decisionEndsAt ? Date.parse(shared.decisionEndsAt) : undefined, Date.parse(shared.startAt), shared.seriesRound ?? 1, Boolean(shared.matchWinner), isHost).replace("id=\"shot-button\"", `id="next-round"`);
   }
   if (activeMode === "bottle-shot") {
     const mineScore = mine?.score ?? bottleScoreTotal;
@@ -226,14 +229,14 @@ function render() {
     root.querySelector(".scoreboard")?.insertAdjacentHTML("afterbegin", `<div><span>SHOWDOWN SERIES</span><b>${mine} - ${rival} / FIRST TO 3</b></div>`);
   }
   if (page === "mode-select") {
-    root.querySelector(".mode-cards")?.insertAdjacentHTML("beforeend", `<article${mode === "bottle-shot" ? " data-selected=\"true\"" : ""}><p class="eyebrow">MODE 04</p><h2>Bottle Shot</h2><p>Thirty seconds of target practice. Green and blue bottles add points; red bottles subtract them.</p><button class="outline" data-mode="bottle-shot">${mode === "bottle-shot" ? "SELECTED" : "SELECT BOTTLE SHOT"}</button></article>`);
+    root.querySelector(".mode-cards")?.insertAdjacentHTML("beforeend", `<article${mode === "bottle-shot" ? " data-selected=\"true\"" : ""}><p class="eyebrow">MODE 04</p><h2>Bottle Shot</h2><p>Thirty seconds of six-bottle waves. Break each bottle once: green and blue add points; red bottles subtract them.</p><button class="outline" data-mode="bottle-shot">${mode === "bottle-shot" ? "SELECTED" : "SELECT BOTTLE SHOT"}</button></article>`);
     const difficultyNote = root.querySelector(".difficulty-select > p:not(.eyebrow)");
     if (difficultyNote) difficultyNote.textContent = "Trail Trace and Bottle Shot change Ash's simulated score; Quick Draw and Word Duel change reaction time.";
   }
   if (page === "how-to") {
     const intro = root.querySelector(".page-header > p:last-child");
     if (intro) intro.textContent = "Four original versus-AI duels, plus their shared multiplayer counterparts.";
-    root.querySelector(".rules")?.insertAdjacentHTML("beforeend", `<article><b>04</b><h2>Bottle Shot</h2><p>For 30 seconds, click or tap green and blue bottles for <strong>+10</strong>; avoid red bottles worth <strong>-10</strong>.</p></article>`);
+    root.querySelector(".rules")?.insertAdjacentHTML("beforeend", `<article><b>04</b><h2>Bottle Shot</h2><p>For 30 seconds, six bottles appear every 1.5 seconds. Click or tap each bottle once to break it: green and blue are <strong>+10</strong>; red is <strong>-10</strong>.</p></article>`);
   }
   root.querySelectorAll<HTMLElement>("[data-page]").forEach(button => button.addEventListener("click", () => nav(button.dataset.page as Page)));
   root.querySelectorAll<HTMLElement>("[data-mode]").forEach(button => button.addEventListener("click", () => { mode = button.dataset.mode as GameMode; render(); }));
@@ -418,11 +421,11 @@ async function startMultiplayerRound() {
     const shared: MultiplayerRound = {
       id: crypto.randomUUID(),
       startAt,
-      ...(room.mode === "showdown-series" ? { gameMode, seriesHostWins: room.roundState.round?.seriesHostWins ?? 0, seriesGuestWins: room.roundState.round?.seriesGuestWins ?? 0, seriesRound: (room.roundState.round?.seriesRound ?? 0) + 1 } : {}),
+      ...(room.mode === "showdown-series" || gameMode === "dust-bluff" ? { ...(room.mode === "showdown-series" ? { gameMode } : {}), seriesHostWins: room.roundState.round?.seriesHostWins ?? 0, seriesGuestWins: room.roundState.round?.seriesGuestWins ?? 0, seriesRound: (room.roundState.round?.seriesRound ?? 0) + 1 } : {}),
       ...(gameMode === "word-duel" ? { word: randomDuelWord() } : {}),
       ...(gameMode === "trail-trace" ? { pathSeed: crypto.getRandomValues(new Uint32Array(1))[0]! } : {}),
       ...(gameMode === "bottle-shot" ? { targetSeed: crypto.getRandomValues(new Uint32Array(1))[0]!, endAt: new Date(Date.parse(startAt) + bottleRoundMs).toISOString() } : {}),
-      ...(gameMode === "dust-bluff" ? { hostHand: randomBetween(3, 10), guestHand: randomBetween(3, 10) } : {}),
+      ...(gameMode === "dust-bluff" ? { hostHand: randomBetween(3, 10), guestHand: randomBetween(3, 10), decisionEndsAt: new Date(Date.parse(startAt) + dustDecisionMs).toISOString() } : {}),
     };
     const nextRoom = await multiplayer.startRound(shared);
     if (session !== multiplayerSession) return;
@@ -440,6 +443,22 @@ async function startMultiplayerRound() {
 
 function syncMultiplayerRound(shared: MultiplayerRound) {
   clearTimers();
+  if ((shared.gameMode ?? multiplayerRoom?.mode) === "dust-bluff" && shared.decisionEndsAt) {
+    const decisionEndsAt = Date.parse(shared.decisionEndsAt);
+    const refresh = () => {
+      const current = multiplayerRoom?.roundState.round;
+      if (!current || current.id !== shared.id || current.winner) return;
+      if (Date.now() >= decisionEndsAt) {
+        const mine = multiplayerRoom?.hostId === multiplayerUserId ? current.hostAction : current.guestAction;
+        if (!mine) void sendDustChoice("hold");
+        return;
+      }
+      if (page === "game") render();
+      drawTimer = window.setTimeout(refresh, 250);
+    };
+    refresh();
+    return;
+  }
   if ((shared.gameMode ?? multiplayerRoom?.mode) === "bottle-shot" && shared.endAt) {
     if (bottleRoundId !== shared.id) { bottleRoundId = shared.id; bottleScoreTotal = 0; bottleHitIds = new Set(); }
     const refresh = () => {
@@ -514,8 +533,9 @@ function shootBottle(id: number) {
   const seed = live ? multiplayerRoom!.roundState.round!.targetSeed! : round.mode === "bottle-shot" ? round.targetSeed : 0;
   const startAt = live ? Date.parse(multiplayerRoom!.roundState.round!.startAt) : round.mode === "bottle-shot" ? round.startAt! : 0;
   const endAt = live ? Date.parse(multiplayerRoom!.roundState.round!.endAt!) : round.mode === "bottle-shot" ? round.endAt! : 0;
-  const activeId = Math.floor((Date.now() - startAt) / bottleTargetMs);
-  if (Date.now() < startAt || Date.now() >= endAt || activeId !== id || bottleHitIds.has(id)) return;
+  const activeWave = Math.floor((Date.now() - startAt) / bottleTargetMs);
+  const firstActiveId = activeWave * bottlesPerWave;
+  if (Date.now() < startAt || Date.now() >= endAt || id < firstActiveId || id >= firstActiveId + bottlesPerWave || bottleHitIds.has(id)) return;
   const target = createBottleSchedule(seed)[id];
   if (!target) return;
   bottleHitIds.add(id);
@@ -542,11 +562,20 @@ async function submitBottleScore() {
 
 function beginRound() {
   tracePoints = [];
-  if (mode === "showdown-series" && (seriesPlayerWins === 3 || seriesOpponentWins === 3)) { seriesPlayerWins = 0; seriesOpponentWins = 0; }
+  if ((mode === "showdown-series" || mode === "dust-bluff") && (seriesPlayerWins === 3 || seriesOpponentWins === 3)) {
+    seriesPlayerWins = 0; seriesOpponentWins = 0;
+    if (mode === "dust-bluff") round = { number: 0, mode: "dust-bluff", phase: "menu", playerHand: 0, opponentHand: 0 };
+  }
   const selectedMode: DirectGameMode = mode === "showdown-series" ? seriesModes[Math.floor(Math.random() * seriesModes.length)]! : mode as DirectGameMode;
   if (selectedMode === "dust-bluff") {
-    round = { number: round.number + 1, mode: "dust-bluff", phase: "choosing", playerHand: randomBetween(3, 10), opponentHand: randomBetween(3, 10) };
-    render(); return;
+    const decisionEndsAt = Date.now() + dustDecisionMs;
+    round = { number: round.number + 1, mode: "dust-bluff", phase: "choosing", playerHand: randomBetween(3, 10), opponentHand: randomBetween(3, 10), decisionEndsAt };
+    const refresh = () => {
+      if (round.mode !== "dust-bluff" || round.phase !== "choosing") return;
+      if (Date.now() >= decisionEndsAt) { chooseDust("hold"); return; }
+      render(); drawTimer = window.setTimeout(refresh, 250);
+    };
+    render(); drawTimer = window.setTimeout(refresh, 250); return;
   }
   if (selectedMode === "bottle-shot") {
     const startAt = Date.now();
@@ -588,7 +617,8 @@ function chooseDust(choice: DustBluffChoice) {
   finishDust(resolveDustBluff(round.playerHand, round.opponentHand, choice, opponentChoice));
 }
 function finishDust(result: DuelResult) {
-  if (result.outcome === "win") { stats.wins++; if (mode === "showdown-series") seriesPlayerWins++; } else { stats.losses++; if (mode === "showdown-series") seriesOpponentWins++; }
+  clearTimers();
+  if (result.outcome === "win") { stats.wins++; seriesPlayerWins++; } else { stats.losses++; seriesOpponentWins++; }
   saveStats();
   round = { ...round, phase: "result", result } as Round;
   playSound(result.outcome === "win" ? "win" : "loss"); render();

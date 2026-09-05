@@ -2,6 +2,8 @@ import type { AiDifficulty, DuelResult, DuelWord, DustBluffChoice, GameSettings 
 
 export const bottleRoundMs = 30_000;
 export const bottleTargetMs = 1_500;
+export const bottlesPerWave = 6;
+export const dustDecisionMs = 7_000;
 export type BottleKind = "green" | "blue" | "red";
 export interface BottleTarget { id: number; kind: BottleKind; x: number; y: number; }
 
@@ -54,19 +56,23 @@ function seededRandom(seed: number) {
   };
 }
 
-export function createBottleSchedule(seed: number, count = Math.ceil(bottleRoundMs / bottleTargetMs)): BottleTarget[] {
+export function createBottleSchedule(seed: number, count = Math.ceil(bottleRoundMs / bottleTargetMs) * bottlesPerWave): BottleTarget[] {
   const random = seededRandom(seed);
+  const positions = [18, 42, 66, 82].flatMap(x => [22, 50, 78].map(y => ({ x, y })));
+  let availablePositions: { x: number; y: number; }[] = [];
   return Array.from({ length: count }, (_, id) => {
+    if (id % bottlesPerWave === 0) availablePositions = [...positions];
     const roll = random();
-    return { id, kind: roll < .42 ? "green" : roll < .84 ? "blue" : "red", x: 15 + random() * 70, y: 14 + random() * 66 };
+    const position = availablePositions.splice(Math.floor(random() * availablePositions.length), 1)[0]!;
+    return { id, kind: roll < .42 ? "green" : roll < .84 ? "blue" : "red", x: position.x, y: position.y };
   });
 }
 
 export function bottleScore(kind: BottleKind) { return kind === "red" ? -10 : 10; }
 
 export function aiBottleScore(difficulty: AiDifficulty) {
-  const hits = difficulty === "easy" ? randomBetween(7, 11) : difficulty === "normal" ? randomBetween(11, 15) : randomBetween(15, 19);
-  const mistakes = difficulty === "easy" ? randomBetween(2, 4) : difficulty === "normal" ? randomBetween(1, 2) : randomBetween(0, 1);
+  const hits = difficulty === "easy" ? randomBetween(32, 40) : difficulty === "normal" ? randomBetween(45, 55) : randomBetween(60, 72);
+  const mistakes = difficulty === "easy" ? randomBetween(8, 12) : difficulty === "normal" ? randomBetween(5, 8) : randomBetween(2, 4);
   return hits * 10 - mistakes * 10;
 }
 

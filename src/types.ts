@@ -30,6 +30,7 @@ export interface MultiplayerRound {
   gameMode?: DirectGameMode;
   hostHand?: number;
   guestHand?: number;
+  decisionEndsAt?: string;
   seriesHostWins?: number;
   seriesGuestWins?: number;
   seriesRound?: number;
@@ -67,7 +68,7 @@ export interface OriginalQuickDrawRound extends BaseRound { mode: "original-quic
 export interface TrailTraceRound extends BaseRound { mode: "trail-trace"; phase: TrailTracePhase; pathSeed: number; playerScore?: number; playerProgress?: number; playerAccuracy?: number; }
 export interface BottleShotRound extends BaseRound { mode: "bottle-shot"; phase: BottleShotPhase; targetSeed: number; startAt?: number; endAt?: number; playerScore?: number; }
 export type DustBluffChoice = "draw" | "hold" | "bluff";
-export interface DustBluffRound extends BaseRound { mode: "dust-bluff"; phase: DustBluffPhase; playerHand: number; opponentHand: number; playerChoice?: DustBluffChoice; opponentChoice?: DustBluffChoice; }
+export interface DustBluffRound extends BaseRound { mode: "dust-bluff"; phase: DustBluffPhase; playerHand: number; opponentHand: number; decisionEndsAt?: number; playerChoice?: DustBluffChoice; opponentChoice?: DustBluffChoice; }
 export type Round = WordDuelRound | OriginalQuickDrawRound | TrailTraceRound | BottleShotRound | DustBluffRound;
 export interface DuelResult { outcome: DuelOutcome; reactionMs?: number; opponentReactionMs: number; message: string; }
 export interface GameSettings { minWaitMs: number; maxWaitMs: number; minOpponentReactionMs: number; maxOpponentReactionMs: number; }

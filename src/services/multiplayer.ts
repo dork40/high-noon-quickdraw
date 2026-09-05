@@ -198,7 +198,7 @@ export const multiplayer: MultiplayerService = {
 
   async startRound(round) {
     const id = await userId();
-    if (!room || room.hostId !== id || !room.guestId || !room.roundState.hostReady || !room.roundState.guestReady || (room.status !== "ready" && !room.roundState.round?.winner)) throw new MultiplayerError("Both players must be ready before the host starts a round.");
+    if (!room || room.hostId !== id || !room.guestId || !room.roundState.hostReady || !room.roundState.guestReady || (room.status !== "ready" && !room.roundState.round?.winner) || room.roundState.round?.matchWinner) throw new MultiplayerError("Both players must be ready before the host starts a round.");
     return updateRoom({ round_state: { ...room.roundState, round }, status: "playing" });
   },
 
@@ -239,7 +239,8 @@ export const multiplayer: MultiplayerService = {
       : host?.falseStart ? "guest" : guest?.falseStart ? "host" : !guest || (host && host.at <= guest.at) ? "host" : "guest";
     const hostWins = (current.seriesHostWins ?? 0) + (winner === "host" ? 1 : 0);
     const guestWins = (current.seriesGuestWins ?? 0) + (winner === "guest" ? 1 : 0);
-    return updateRoom({ round_state: { ...room.roundState, round: { ...current, winner, resolvedAt: new Date().toISOString(), ...(room.mode === "showdown-series" ? { seriesHostWins: hostWins, seriesGuestWins: guestWins, matchWinner: hostWins === 3 ? "host" : guestWins === 3 ? "guest" : undefined } : {}) } } });
+    const isSeries = room.mode === "showdown-series" || gameMode === "dust-bluff";
+    return updateRoom({ round_state: { ...room.roundState, round: { ...current, winner, resolvedAt: new Date().toISOString(), ...(isSeries ? { seriesHostWins: hostWins, seriesGuestWins: guestWins, matchWinner: hostWins === 3 ? "host" : guestWins === 3 ? "guest" : undefined } : {}) } } });
   },
 };
 

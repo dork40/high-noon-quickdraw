@@ -1,6 +1,6 @@
 # High Noon Showdown
 
-High Noon Showdown v2.1.0 is an original Wild West browser game with six versus-AI choices, synthesized Web Audio effects, and casual Supabase Realtime multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
+High Noon Showdown v2.2.0 is an original Wild West browser game with six versus-AI choices, synthesized Web Audio effects, and casual Supabase Realtime multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
 
 ## Run
 
@@ -16,7 +16,7 @@ Copy `.env.example` to `.env.local` and add the Supabase values before using mul
 - Quick Draw: click, tap, or press Space after `DRAW!`.
 - Word Duel: type the shown word in either uppercase or lowercase, then press Enter.
 - Trail Trace: press and hold on the canvas, follow the winding gold path, then release to submit a score based on progress and accuracy.
-- Dust Bluff: read your three-card strength, then choose Draw, Hold, or Bluff.
+- Dust Bluff: play a best-of-five match. Each new hand has a seven-second Draw, Hold, or Bluff decision window; first to three round wins takes the match.
 - Sound: use the visible `MUTE` / `UNMUTE` control. Web Audio starts only after interaction and safely does nothing when unavailable.
 - During any versus-AI or live multiplayer duel, select `FULL SCREEN` to expand the game. Select `EXIT FULL SCREEN`, or use the browser's fullscreen exit gesture, to return.
 
@@ -201,8 +201,8 @@ Use the project's publishable/anon key only. Never expose a service-role key in 
 - **Original Quick Draw:** after a random 2-6 second wait, `DRAW!` appears. Click, tap, or press `Space` once to shoot before the AI reacts.
 - **Word Duel:** after a random wait, type `SHOOT`, `DRAW`, or `POW` exactly and press Enter.
 - **Trail Trace:** trace the generated winding target line with a mouse, touch, or pen. The final score combines farthest target progress with average line accuracy, with a small completion bonus.
-- **Bottle Shot:** a 30-second target range. Click or tap green and blue bottles for +10; red bottles subtract 10. Ash's hit count and mistakes vary by difficulty.
-- **Dust Bluff:** an original three-choice mind game, not poker. `Draw` beats `Hold`, `Hold` beats `Bluff`, and `Bluff` beats `Draw`; matching choices compare the displayed hand strength.
+- **Bottle Shot:** a 30-second target range with six smaller, touch-accessible bottles visible at once. Click or tap each bottle once to break it: green and blue bottles add +10, while red bottles subtract 10. A new seeded six-bottle wave appears every 1.5 seconds; Ash's higher-volume hit count and mistakes vary by difficulty.
+- **Dust Bluff:** a best-of-five, first-to-three three-choice mind-game match, not poker. Each card round deals fresh hands and gives seven seconds to choose `Draw`, `Hold`, or `Bluff`; an unanswered hand locks `Hold` when time expires. `Draw` beats `Hold`, `Hold` beats `Bluff`, and `Bluff` beats `Draw`; matching choices compare the displayed hand strength. The running match score, card-round number, next-hand action, and final match winner remain visible.
 - **Showdown Series:** best of five, first to three wins. Every round randomly selects exactly Quick Draw, Word Duel, Trail Trace, or Bottle Shot. Dust Bluff is intentionally excluded.
 - In every AI mode, acting before the signal is a false start and loses the round.
 
@@ -212,11 +212,11 @@ Before starting a versus-AI mode, choose Ash Mercer's difficulty: **Easy** react
 
 Create a six-character private room code or join an available room as before. Quick Game selects a mode and queues the signed-in player; the next player requesting that same mode is atomically paired into a new `duel_rooms` row. The first requester receives the room through their queue's Realtime update, while the second receives it directly from the RPC. Both sessions then subscribe to the room and can mark themselves ready. Cancel Search only removes an unmatched queue entry.
 
-When both players are ready, the host writes a new shared `round_state.round` with a random 2-6 second future `startAt` timestamp. Both browsers wait for that same timestamp. For Original Quick Draw, each player can submit one shot; for Word Duel, the host includes one randomly selected `SHOOT`, `DRAW`, or `POW` word and each player submits one exact Enter-confirmed answer. For Trail Trace, the host adds a deterministic `pathSeed`; both browsers generate the same winding path and submit one JSON action payload containing `score`, `progress`, and `accuracy`. Bottle Shot uses a host-created `targetSeed`, shared `startAt`, and `endAt` exactly 30 seconds later; both clients derive the identical target schedule, submit their final scores, and the host resolves the high score after the round. Trail Trace and Bottle Shot resolve only after both scores are submitted. The host can start the next round after a result; either player can leave. Leaving always returns the browser to the Multiplayer lobby and closes local room/queue listeners and timers; the host deletes the room and a guest releases their seat. If remote cleanup fails, the local session still leaves safely and shows the cleanup error in the lobby.
+When both players are ready, the host writes a new shared `round_state.round` with a random 2-6 second future `startAt` timestamp. Both browsers wait for that same timestamp. For Original Quick Draw, each player can submit one shot; for Word Duel, the host includes one randomly selected `SHOOT`, `DRAW`, or `POW` word and each player submits one exact Enter-confirmed answer. For Trail Trace, the host adds a deterministic `pathSeed`; both browsers generate the same winding path and submit one JSON action payload containing `score`, `progress`, and `accuracy`. Bottle Shot uses a host-created `targetSeed`, shared `startAt`, and `endAt` exactly 30 seconds later; both clients derive the same six-target wave schedule. Dust Bluff stores fresh host and guest hands, a shared seven-second `decisionEndsAt`, card-round number, and first-to-three score in that same state; unanswered clients lock `Hold` at the deadline. The host resolves each completed Dust Bluff hand and starts the next one until a match winner is recorded. Each player keeps an independent set of broken target IDs, so a bottle can score once per player and immediately disappears on that player's range. Both submit final scores and the host resolves the high score after the round. Trail Trace and Bottle Shot resolve only after both scores are submitted. The host can start the next round after a result; either player can leave. Leaving always returns the browser to the Multiplayer lobby and closes local room/queue listeners and timers; the host deletes the room and a guest releases their seat. If remote cleanup fails, the local session still leaves safely and shows the cleanup error in the lobby.
 
 ### SQL Requirement
 
-Existing users must rerun the latest **v2.1.0 SQL block** if multiplayer was already installed. It expands room, Quick Game queue, and `request_quick_match` validation to include `dust-bluff` and `showdown-series`. No new columns are needed because `round_state jsonb` stores choice/reveal and Series state. Realtime must remain enabled for `public.duel_rooms`.
+Existing users must rerun the latest **v2.1.0 SQL block** if multiplayer was already installed. It expands room, Quick Game queue, and `request_quick_match` validation to include `dust-bluff` and `showdown-series`. Dust Bluff v2.2.0 and Bottle Shot v2.1.1 need no schema change because their round data is stored in the existing JSON shared state. Realtime must remain enabled for `public.duel_rooms`.
 
 This is **client-timed casual play**, not cheat-proof competitive play. Start and action timestamps are created by browsers, and the current broad room-update policy cannot prove who acted first or prevent a modified client from forging a result. A cheat-resistant version needs server-side round creation, timestamp validation, and atomic action/result RPCs.
 
