@@ -32,7 +32,7 @@ export interface MultiplayerService {
   cancelQuickMatch(): Promise<Room | null>;
   subscribeToQuickMatch(onMatch: (room: Room) => void, onError: (message: string) => void): () => void;
   startRound(round: MultiplayerRound): Promise<Room>;
-  submitRoundAction(roundId: string, reactionMs: number, falseStart: boolean): Promise<Room>;
+  submitRoundAction(roundId: string, reactionMs: number, falseStart: boolean, payload?: { score: number; progress: number; accuracy: number }): Promise<Room>;
   resolveRound(roundId: string): Promise<Room>;
 }
 
@@ -129,17 +129,22 @@ export const multiplayer: MultiplayerService = {
   },
 
   async leaveRoom() {
-    const id = await userId();
-    if (!room) return;
-    const supabase = requireClient();
-    if (room.hostId === id) {
-      const { error } = await supabase.from("duel_rooms").delete().eq("code", room.code);
-      if (error) throw explain(error);
-    } else if (room.guestId === id) {
-      const { error } = await supabase.from("duel_rooms").update({ guest_id: null, status: "lobby", round_state: { ...room.roundState, guestReady: false } }).eq("code", room.code).eq("guest_id", id);
-      if (error) throw explain(error);
+    const departingRoom = room;
+    try {
+      const id = await userId();
+      if (!departingRoom) return;
+      const supabase = requireClient();
+      if (departingRoom.hostId === id) {
+        const { error } = await supabase.from("duel_rooms").delete().eq("code", departingRoom.code);
+        if (error) throw explain(error);
+      } else if (departingRoom.guestId === id) {
+        const { error } = await supabase.from("duel_rooms").update({ guest_id: null, status: "lobby", round_state: { ...departingRoom.roundState, guestReady: false } }).eq("code", departingRoom.code).eq("guest_id", id);
+        if (error) throw explain(error);
+      }
+    } finally {
+      // Local state must not retain a departed room when the remote cleanup fails.
+      room = null;
     }
-    room = null;
   },
 
   subscribeToRoom(onRoom, onError) {
@@ -183,11 +188,11 @@ export const multiplayer: MultiplayerService = {
         if (!entry.roomCode) return;
         const { data, error } = await client.from("duel_rooms").select().eq("code", entry.roomCode).maybeSingle<RoomRow>();
         if (error) { onError(explain(error).message); return; }
-        if (data) { room = mapRoom(data); onMatch(room); }
+        if (active && data) { room = mapRoom(data); onMatch(room); }
       }).subscribe(status => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") onError("Quick Game updates failed. Confirm Realtime is enabled for public.quick_match_queue.");
+        if (active && (status === "CHANNEL_ERROR" || status === "TIMED_OUT")) onError("Quick Game updates failed. Confirm Realtime is enabled for public.quick_match_queue.");
       });
-    }).catch(error => onError(error instanceof Error ? error.message : "Could not listen for Quick Game matches."));
+    }).catch(error => { if (active) onError(error instanceof Error ? error.message : "Could not listen for Quick Game matches."); });
     return () => { active = false; quickMatchChannel?.unsubscribe(); quickMatchChannel = null; };
   },
 
@@ -197,7 +202,7 @@ export const multiplayer: MultiplayerService = {
     return updateRoom({ round_state: { ...room.roundState, round }, status: "playing" });
   },
 
-  async submitRoundAction(roundId, reactionMs, falseStart) {
+  async submitRoundAction(roundId, reactionMs, falseStart, payload) {
     const id = await userId();
     if (!room || (room.hostId !== id && room.guestId !== id)) throw new MultiplayerError("You are not seated in this room.");
     // Read immediately before writing so a received opponent action is retained.
@@ -208,7 +213,7 @@ export const multiplayer: MultiplayerService = {
     if (room.status !== "playing" || !current || current.id !== roundId || current.winner) throw new MultiplayerError("That round has already ended.");
     const actionKey = room.hostId === id ? "hostAction" : "guestAction";
     if (current[actionKey]) throw new MultiplayerError("You already acted this round.");
-    return updateRoom({ round_state: { ...room.roundState, round: { ...current, [actionKey]: { at: new Date().toISOString(), reactionMs, ...(falseStart ? { falseStart: true } : {}) } } } });
+    return updateRoom({ round_state: { ...room.roundState, round: { ...current, [actionKey]: { at: new Date().toISOString(), reactionMs, ...(falseStart ? { falseStart: true } : {}), ...payload } } } });
   },
 
   async resolveRound(roundId) {
@@ -222,7 +227,10 @@ export const multiplayer: MultiplayerService = {
     const host = current.hostAction;
     const guest = current.guestAction;
     if (!host && !guest) return room;
-    const winner = host?.falseStart ? "guest" : guest?.falseStart ? "host" : !guest || (host && host.at <= guest.at) ? "host" : "guest";
+    if (room.mode === "trail-trace" && (!host || !guest)) return room;
+    const winner = room.mode === "trail-trace"
+      ? (host!.score ?? 0) >= (guest!.score ?? 0) ? "host" : "guest"
+      : host?.falseStart ? "guest" : guest?.falseStart ? "host" : !guest || (host && host.at <= guest.at) ? "host" : "guest";
     return updateRoom({ round_state: { ...room.roundState, round: { ...current, winner, resolvedAt: new Date().toISOString() } } });
   },
 };

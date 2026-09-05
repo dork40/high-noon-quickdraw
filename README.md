@@ -1,6 +1,6 @@
 # High Noon Showdown
 
-High Noon Showdown v1.6 is an original Wild West browser game with two versus-AI modes and casual Supabase Realtime multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
+High Noon Showdown v1.9.1 is an original Wild West browser game with three versus-AI modes, selectable AI difficulty, and casual Supabase Realtime multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
 
 ## Run
 
@@ -10,6 +10,13 @@ npm run dev
 ```
 
 Copy `.env.example` to `.env.local` and add the Supabase values before using multiplayer. Use `npm run build` to type-check and create a production build.
+
+## Controls
+
+- Quick Draw: click, tap, or press Space after `DRAW!`.
+- Word Duel: type the shown word in either uppercase or lowercase, then press Enter.
+- Trail Trace: press and hold on the canvas, follow the winding gold path, then release to submit a score based on progress and accuracy.
+- During any versus-AI or live multiplayer duel, select `FULL SCREEN` to expand the game. Select `EXIT FULL SCREEN`, or use the browser's fullscreen exit gesture, to return.
 
 ## Multiplayer Setup
 
@@ -21,13 +28,17 @@ create table if not exists public.duel_rooms (
   code text primary key check (code ~ '^[A-Z0-9]{6}$'),
   host_id uuid not null references auth.users(id) on delete cascade,
   guest_id uuid references auth.users(id) on delete set null,
-  mode text not null default 'original-quick-draw',
+  mode text not null default 'original-quick-draw' check (mode in ('original-quick-draw', 'word-duel', 'trail-trace')),
   status text not null default 'lobby' check (status in ('lobby', 'ready', 'playing')),
   round_state jsonb not null default '{"hostReady": false, "guestReady": false}'::jsonb,
   created_at timestamptz not null default now()
 );
 
 alter table public.duel_rooms enable row level security;
+
+delete from public.duel_rooms where mode not in ('original-quick-draw', 'word-duel', 'trail-trace');
+alter table public.duel_rooms drop constraint if exists duel_rooms_mode_check;
+alter table public.duel_rooms add constraint duel_rooms_mode_check check (mode in ('original-quick-draw', 'word-duel', 'trail-trace'));
 
 drop policy if exists "duel rooms are readable by signed-in players" on public.duel_rooms;
 drop policy if exists "signed-in players can create rooms" on public.duel_rooms;
@@ -51,7 +62,7 @@ on public.duel_rooms for delete to authenticated using (auth.uid() = host_id);
 
 create table if not exists public.quick_match_queue (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  mode text not null constraint quick_match_queue_mode_check check (mode in ('original-quick-draw', 'word-duel')),
+  mode text not null constraint quick_match_queue_mode_check check (mode in ('original-quick-draw', 'word-duel', 'trail-trace')),
   room_code text references public.duel_rooms(code) on delete set null,
   created_at timestamptz not null default now(),
   matched_at timestamptz
@@ -59,9 +70,9 @@ create table if not exists public.quick_match_queue (
 
 alter table public.quick_match_queue enable row level security;
 
-delete from public.quick_match_queue where mode not in ('original-quick-draw', 'word-duel');
+delete from public.quick_match_queue where mode not in ('original-quick-draw', 'word-duel', 'trail-trace');
 alter table public.quick_match_queue drop constraint if exists quick_match_queue_mode_check;
-alter table public.quick_match_queue add constraint quick_match_queue_mode_check check (mode in ('original-quick-draw', 'word-duel'));
+alter table public.quick_match_queue add constraint quick_match_queue_mode_check check (mode in ('original-quick-draw', 'word-duel', 'trail-trace'));
 
 drop policy if exists "players can read their quick match entry" on public.quick_match_queue;
 drop policy if exists "players can add their quick match entry" on public.quick_match_queue;
@@ -91,7 +102,7 @@ declare
   v_code text;
 begin
   if v_user_id is null then raise exception 'Authentication required'; end if;
-  if p_mode not in ('original-quick-draw', 'word-duel') then raise exception 'Invalid duel mode'; end if;
+  if p_mode not in ('original-quick-draw', 'word-duel', 'trail-trace') then raise exception 'Invalid duel mode'; end if;
 
   -- One lock per mode makes selecting a waiting player and assigning both seats atomic.
   perform pg_advisory_xact_lock(hashtextextended('high-noon-quick-match:' || p_mode, 0));
@@ -187,19 +198,20 @@ Use the project's publishable/anon key only. Never expose a service-role key in 
 
 - **Original Quick Draw:** after a random 2-6 second wait, `DRAW!` appears. Click, tap, or press `Space` once to shoot before the AI reacts.
 - **Word Duel:** after a random wait, type `SHOOT`, `DRAW`, or `POW` exactly and press Enter.
+- **Trail Trace:** trace the generated winding target line with a mouse, touch, or pen. The final score combines farthest target progress with average line accuracy, with a small completion bonus.
 - In every AI mode, acting before the signal is a false start and loses the round.
 
-The AI has a random 550-1400 ms reaction in both modes. Wins, losses, and the fastest successful reaction are stored locally when browser storage is available.
+Before starting a versus-AI mode, choose Ash Mercer's difficulty: **Easy** reacts randomly in 1200-2200 ms and traces around 48-72 points, **Normal** reacts randomly in 550-1400 ms and traces around 68-88 points, and **Hard** reacts randomly in 250-650 ms and traces around 84-98 points. Trail Trace begins immediately; the two existing signal modes keep their random 2-6 second waiting period. The active difficulty appears during the AI duel, and wins, losses, and the fastest successful reaction remain stored locally when browser storage is available.
 
 ## Multiplayer Behavior
 
 Create a six-character private room code or join an available room as before. Quick Game selects a mode and queues the signed-in player; the next player requesting that same mode is atomically paired into a new `duel_rooms` row. The first requester receives the room through their queue's Realtime update, while the second receives it directly from the RPC. Both sessions then subscribe to the room and can mark themselves ready. Cancel Search only removes an unmatched queue entry.
 
-When both players are ready, the host writes a new shared `round_state.round` with a random 2-6 second future `startAt` timestamp. Both browsers wait for that same timestamp. For Original Quick Draw, each player can submit one shot; for Word Duel, the host includes one randomly selected `SHOOT`, `DRAW`, or `POW` word and each player submits one exact Enter-confirmed answer. The host resolves the first received valid action, and both players see their own and their rival's submitted reaction timing. The host can start the next round after a result; either player can leave.
+When both players are ready, the host writes a new shared `round_state.round` with a random 2-6 second future `startAt` timestamp. Both browsers wait for that same timestamp. For Original Quick Draw, each player can submit one shot; for Word Duel, the host includes one randomly selected `SHOOT`, `DRAW`, or `POW` word and each player submits one exact Enter-confirmed answer. For Trail Trace, the host adds a deterministic `pathSeed`; both browsers generate the same winding path and submit one JSON action payload containing `score`, `progress`, and `accuracy`. Trail Trace resolves only after both scores are submitted, and the higher score wins. The host can start the next round after a result; either player can leave. Leaving always returns the browser to the Multiplayer lobby and closes local room/queue listeners and timers; the host deletes the room and a guest releases their seat. If remote cleanup fails, the local session still leaves safely and shows the cleanup error in the lobby.
 
 ### SQL Requirement
 
-No additional SQL migration is required for v1.6 when the setup block above is already installed. The existing `round_state jsonb` column stores the new `round`, action, and result fields, and the existing seated-player update policy permits those writes. Realtime must remain enabled for `public.duel_rooms`.
+Run the updated setup block for v1.9.0 if multiplayer was already installed: it expands the room and Quick Game mode constraints to include `trail-trace`. No new table columns are needed because the existing `round_state jsonb` stores the seeded path plus action score payloads. Realtime must remain enabled for `public.duel_rooms`.
 
 This is **client-timed casual play**, not cheat-proof competitive play. Start and action timestamps are created by browsers, and the current broad room-update policy cannot prove who acted first or prevent a modified client from forging a result. A cheat-resistant version needs server-side round creation, timestamp validation, and atomic action/result RPCs.
 

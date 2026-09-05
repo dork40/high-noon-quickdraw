@@ -1,4 +1,4 @@
-import type { DuelResult, DuelWord, GameSettings } from "../types";
+import type { AiDifficulty, DuelResult, DuelWord, GameSettings } from "../types";
 
 export const settings: GameSettings = {
   minWaitMs: 2000,
@@ -7,10 +7,17 @@ export const settings: GameSettings = {
   maxOpponentReactionMs: 1400,
 };
 
+export const aiDifficultySettings: Record<AiDifficulty, GameSettings> = {
+  easy: { ...settings, minOpponentReactionMs: 1200, maxOpponentReactionMs: 2200 },
+  normal: settings,
+  hard: { ...settings, minOpponentReactionMs: 250, maxOpponentReactionMs: 650 },
+};
+
 export const randomBetween = (minimum: number, maximum: number): number =>
   Math.round(minimum + Math.random() * (maximum - minimum));
 
-export function createRoundTiming(config = settings) {
+export function createRoundTiming(difficulty: AiDifficulty = "normal") {
+  const config = aiDifficultySettings[difficulty];
   return {
     waitMs: randomBetween(config.minWaitMs, config.maxWaitMs),
     opponentReactionMs: randomBetween(config.minOpponentReactionMs, config.maxOpponentReactionMs),
