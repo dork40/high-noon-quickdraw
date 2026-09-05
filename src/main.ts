@@ -281,13 +281,13 @@ function takeAction() {
 function submitWord() {
   if (multiplayerRoom?.status === "playing") {
     const input = root.querySelector<HTMLInputElement>("#word-input");
-    if (input?.value === multiplayerRoom.roundState.round?.word) void sendMultiplayerAction();
+    if (input?.value.trim().toUpperCase() === multiplayerRoom.roundState.round?.word) void sendMultiplayerAction();
     else input?.focus();
     return;
   }
   if (round.mode !== "word-duel" || round.phase !== "word") return;
   const input = root.querySelector<HTMLInputElement>("#word-input");
-  if (!input || input.value !== round.word) { input?.focus(); return; }
+  if (!input || input.value.trim().toUpperCase() !== round.word) { input?.focus(); return; }
   finish(resolveShot(Math.round(performance.now() - round.wordAt!), round.opponentReactionMs!));
 }
 function finish(result: DuelResult) {
