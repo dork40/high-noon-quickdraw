@@ -3,6 +3,7 @@ import type { AiDifficulty, DuelResult, DuelWord, DustBluffChoice, GameSettings 
 export const bottleRoundMs = 30_000;
 export const bottleTargetMs = 1_500;
 export const bottlesPerWave = 6;
+export const bottleMissPenalty = -10;
 export const dustDecisionMs = 7_000;
 export type BottleKind = "green" | "blue" | "red";
 export interface BottleTarget { id: number; kind: BottleKind; x: number; y: number; }
@@ -60,20 +61,26 @@ export function createBottleSchedule(seed: number, count = Math.ceil(bottleRound
   const random = seededRandom(seed);
   const positions = [18, 42, 66, 82].flatMap(x => [22, 50, 78].map(y => ({ x, y })));
   let availablePositions: { x: number; y: number; }[] = [];
+  let availableKinds: BottleKind[] = [];
   return Array.from({ length: count }, (_, id) => {
-    if (id % bottlesPerWave === 0) availablePositions = [...positions];
-    const roll = random();
+    if (id % bottlesPerWave === 0) {
+      availablePositions = [...positions];
+      // Every wave has more red hazards than either scoring color, but remains half playable.
+      availableKinds = ["green", "green", "blue", "red", "red", "red"];
+    }
     const position = availablePositions.splice(Math.floor(random() * availablePositions.length), 1)[0]!;
-    return { id, kind: roll < .42 ? "green" : roll < .84 ? "blue" : "red", x: position.x, y: position.y };
+    const kind = availableKinds.splice(Math.floor(random() * availableKinds.length), 1)[0]!;
+    return { id, kind, x: position.x, y: position.y };
   });
 }
 
 export function bottleScore(kind: BottleKind) { return kind === "red" ? -10 : 10; }
 
 export function aiBottleScore(difficulty: AiDifficulty) {
-  const hits = difficulty === "easy" ? randomBetween(32, 40) : difficulty === "normal" ? randomBetween(45, 55) : randomBetween(60, 72);
-  const mistakes = difficulty === "easy" ? randomBetween(8, 12) : difficulty === "normal" ? randomBetween(5, 8) : randomBetween(2, 4);
-  return hits * 10 - mistakes * 10;
+  const goodHits = difficulty === "easy" ? randomBetween(24, 34) : difficulty === "normal" ? randomBetween(35, 45) : randomBetween(48, 58);
+  const redHits = difficulty === "easy" ? randomBetween(8, 12) : difficulty === "normal" ? randomBetween(5, 8) : randomBetween(2, 4);
+  const rangeMisses = difficulty === "easy" ? randomBetween(8, 12) : difficulty === "normal" ? randomBetween(4, 7) : randomBetween(1, 3);
+  return goodHits * 10 + (redHits + rangeMisses) * bottleMissPenalty;
 }
 
 export function dustHandLabel(strength: number) {

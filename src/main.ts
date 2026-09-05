@@ -1,12 +1,12 @@
 import "./style.css";
-import { aiBottleScore, aiDustChoice, bottleRoundMs, bottleScore, bottleTargetMs, bottlesPerWave, createBottleSchedule, createRoundTiming, dustDecisionMs, dustHandLabel, falseStart, randomBetween, randomDuelWord, resolveDustBluff, resolveShot, settings } from "./game/rules";
+import { aiBottleScore, aiDustChoice, bottleMissPenalty, bottleRoundMs, bottleScore, bottleTargetMs, bottlesPerWave, createBottleSchedule, createRoundTiming, dustDecisionMs, dustHandLabel, falseStart, randomBetween, randomDuelWord, resolveDustBluff, resolveShot, settings } from "./game/rules";
 import { isMuted, loadMuted, playSound, toggleMuted } from "./game/audio";
 import { aiTrailScore, createTrail, scoreTrail, type TrailPoint } from "./game/trail";
 import { multiplayer } from "./services/multiplayer";
 import type { AiDifficulty, DuelResult, DirectGameMode, DustBluffChoice, GameMode, MultiplayerRound, Room, Round } from "./types";
 
 type Page = "home" | "mode-select" | "game" | "multiplayer" | "how-to";
-const appVersion = "2.2.0";
+const appVersion = "2.2.1";
 const root = document.querySelector<HTMLDivElement>("#app")!;
 let page: Page = "home";
 let mode: GameMode = "original-quick-draw";
@@ -116,9 +116,9 @@ function bottleShotView(seed: number, startAt: number | undefined, endAt: number
   const waveIndex = startAt === undefined ? -1 : Math.floor((now - startAt) / bottleTargetMs);
   const bottles = !waiting && !ended && waveIndex >= 0 ? createBottleSchedule(seed).slice(waveIndex * bottlesPerWave, (waveIndex + 1) * bottlesPerWave) : [];
   const seconds = endAt ? Math.max(0, Math.ceil((endAt - now) / 1000)) : 30;
-  const prompt = result ? `You scored ${score}; ${opponentScore === undefined ? "Ash" : "your rival"} scored ${opponentScore ?? 0}.` : waiting ? "Get set. The shared bottle run starts together." : ended ? (submitted ? "Score sent. Waiting for the host to settle the round." : "Time is up. Sending your score.") : "Shoot green and blue bottles for +10. Red bottles cost 10. Each bottle breaks after one hit.";
+  const prompt = result ? `You scored ${score}; ${opponentScore === undefined ? "Ash" : "your rival"} scored ${opponentScore ?? 0}.` : waiting ? "Get set. The shared bottle run starts together." : ended ? (submitted ? "Score sent. Waiting for the host to settle the round." : "Time is up. Sending your score.") : "Shoot green and blue bottles for +10. Red bottles and empty-range shots cost 10. Each bottle breaks after one hit.";
   const bottleButtons = bottles.filter(target => !bottleHitIds.has(target.id)).map(target => `<button class="bottle bottle-${target.kind}" data-bottle-id="${target.id}" style="left:${target.x}%;top:${target.y}%" aria-label="Shoot ${target.kind} bottle">${target.kind === "red" ? "-10" : "+10"}</button>`).join("");
-  return layout(`<section class="bottle-game"><div class="bottle-heading"><p class="eyebrow">${title}</p><h1>${result ?? (waiting ? "GET READY" : ended ? "TIME" : "BOTTLE SHOT")}</h1><p>${prompt}</p></div><div class="bottle-stats"><span><b>${seconds}</b> SEC</span><span><b>${score}</b> SCORE</span><span>GREEN / BLUE <b>+10</b></span><span>RED <b>-10</b></span></div><div class="bottle-range" aria-live="polite">${bottleButtons}</div><p class="trace-hint">${waiting ? "SIX TARGETS APPEAR ON THE BELL." : "TAP OR CLICK EACH BOTTLE ONCE. SIX TARGETS CHANGE EVERY 1.5 SECONDS."}</p>${startAt === undefined ? `<button id="shot-button" class="primary">START BOTTLE SHOT</button>` : result ? `<div class="duel-actions">${title.startsWith("LIVE") && multiplayerRoom?.hostId === multiplayerUserId ? `<button id="next-round" class="primary">NEXT ROUND</button>` : ""}${title.startsWith("LIVE") ? `<button id="leave-duel" class="outline">LEAVE ROOM</button>` : ""}</div>` : ""}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR SCORE</span><b>${score}</b></div><div><span>${opponentScore === undefined ? "TARGET" : "RIVAL SCORE"}</span><b>${opponentScore ?? "--"}</b></div><div><span>ROUND TIME</span><b>30 SEC</b></div><div><span>MODE</span><b>BOTTLE SHOT</b></div></section>`);
+  return layout(`<section class="bottle-game"><div class="bottle-heading"><p class="eyebrow">${title}</p><h1>${result ?? (waiting ? "GET READY" : ended ? "TIME" : "BOTTLE SHOT")}</h1><p>${prompt}</p></div><div class="bottle-stats"><span><b>${seconds}</b> SEC</span><span><b>${score}</b> SCORE</span><span>GREEN / BLUE <b>+10</b></span><span>RED / MISS <b>-10</b></span></div><div class="bottle-range" aria-live="polite">${bottleButtons}</div><p class="trace-hint">${waiting ? "SIX TARGETS APPEAR ON THE BELL." : "TAP OR CLICK A BOTTLE ONCE. EMPTY-RANGE SHOTS COST 10. SIX TARGETS CHANGE EVERY 1.5 SECONDS."}</p>${startAt === undefined ? `<button id="shot-button" class="primary">START BOTTLE SHOT</button>` : result ? `<div class="duel-actions">${title.startsWith("LIVE") && multiplayerRoom?.hostId === multiplayerUserId ? `<button id="next-round" class="primary">NEXT ROUND</button>` : ""}${title.startsWith("LIVE") ? `<button id="leave-duel" class="outline">LEAVE ROOM</button>` : ""}</div>` : ""}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR SCORE</span><b>${score}</b></div><div><span>${opponentScore === undefined ? "TARGET" : "RIVAL SCORE"}</span><b>${opponentScore ?? "--"}</b></div><div><span>ROUND TIME</span><b>30 SEC</b></div><div><span>MODE</span><b>BOTTLE SHOT</b></div></section>`);
 }
 
 function gameView() {
@@ -229,14 +229,14 @@ function render() {
     root.querySelector(".scoreboard")?.insertAdjacentHTML("afterbegin", `<div><span>SHOWDOWN SERIES</span><b>${mine} - ${rival} / FIRST TO 3</b></div>`);
   }
   if (page === "mode-select") {
-    root.querySelector(".mode-cards")?.insertAdjacentHTML("beforeend", `<article${mode === "bottle-shot" ? " data-selected=\"true\"" : ""}><p class="eyebrow">MODE 04</p><h2>Bottle Shot</h2><p>Thirty seconds of six-bottle waves. Break each bottle once: green and blue add points; red bottles subtract them.</p><button class="outline" data-mode="bottle-shot">${mode === "bottle-shot" ? "SELECTED" : "SELECT BOTTLE SHOT"}</button></article>`);
+    root.querySelector(".mode-cards")?.insertAdjacentHTML("beforeend", `<article${mode === "bottle-shot" ? " data-selected=\"true\"" : ""}><p class="eyebrow">MODE 04</p><h2>Bottle Shot</h2><p>Thirty seconds of six-bottle waves. Green and blue add points; red bottles and empty-range shots subtract them.</p><button class="outline" data-mode="bottle-shot">${mode === "bottle-shot" ? "SELECTED" : "SELECT BOTTLE SHOT"}</button></article>`);
     const difficultyNote = root.querySelector(".difficulty-select > p:not(.eyebrow)");
     if (difficultyNote) difficultyNote.textContent = "Trail Trace and Bottle Shot change Ash's simulated score; Quick Draw and Word Duel change reaction time.";
   }
   if (page === "how-to") {
     const intro = root.querySelector(".page-header > p:last-child");
     if (intro) intro.textContent = "Four original versus-AI duels, plus their shared multiplayer counterparts.";
-    root.querySelector(".rules")?.insertAdjacentHTML("beforeend", `<article><b>04</b><h2>Bottle Shot</h2><p>For 30 seconds, six bottles appear every 1.5 seconds. Click or tap each bottle once to break it: green and blue are <strong>+10</strong>; red is <strong>-10</strong>.</p></article>`);
+    root.querySelector(".rules")?.insertAdjacentHTML("beforeend", `<article><b>04</b><h2>Bottle Shot</h2><p>For 30 seconds, six bottles appear every 1.5 seconds. Green and blue are <strong>+10</strong>; red bottles and shots that miss an active bottle are <strong>-10</strong>.</p></article>`);
   }
   root.querySelectorAll<HTMLElement>("[data-page]").forEach(button => button.addEventListener("click", () => nav(button.dataset.page as Page)));
   root.querySelectorAll<HTMLElement>("[data-mode]").forEach(button => button.addEventListener("click", () => { mode = button.dataset.mode as GameMode; render(); }));
@@ -245,7 +245,10 @@ function render() {
   root.querySelectorAll<HTMLElement>("[data-ai-difficulty]").forEach(button => button.addEventListener("click", () => { aiDifficulty = button.dataset.aiDifficulty as AiDifficulty; render(); }));
   root.querySelector("#start-ai-duel")?.addEventListener("click", () => nav("game"));
   root.querySelector("#shot-button")?.addEventListener("click", takeAction);
-  root.querySelectorAll<HTMLButtonElement>("[data-bottle-id]").forEach(button => button.addEventListener("click", () => shootBottle(Number(button.dataset.bottleId))));
+  root.querySelector(".bottle-range")?.addEventListener("click", event => {
+    if (!(event.target instanceof Element) || !event.target.closest("[data-bottle-id]")) shootBottleMiss();
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-bottle-id]").forEach(button => button.addEventListener("click", event => { event.stopPropagation(); shootBottle(Number(button.dataset.bottleId)); }));
   root.querySelector<HTMLFormElement>("#word-form")?.addEventListener("submit", event => { event.preventDefault(); submitWord(); });
   root.querySelector("#create-room")?.addEventListener("click", () => void createRoom());
   root.querySelector("#join-room")?.addEventListener("click", () => void joinRoom());
@@ -541,6 +544,17 @@ function shootBottle(id: number) {
   bottleHitIds.add(id);
   bottleScoreTotal += bottleScore(target.kind);
   playSound(target.kind === "red" ? "negative" : "bottle");
+  if (!live && round.mode === "bottle-shot") round = { ...round, playerScore: bottleScoreTotal };
+  render();
+}
+
+function shootBottleMiss() {
+  const live = multiplayerRoom?.status === "playing";
+  const startAt = live ? Date.parse(multiplayerRoom!.roundState.round!.startAt) : round.mode === "bottle-shot" ? round.startAt! : 0;
+  const endAt = live ? Date.parse(multiplayerRoom!.roundState.round!.endAt!) : round.mode === "bottle-shot" ? round.endAt! : 0;
+  if (Date.now() < startAt || Date.now() >= endAt) return;
+  bottleScoreTotal += bottleMissPenalty;
+  playSound("negative");
   if (!live && round.mode === "bottle-shot") round = { ...round, playerScore: bottleScoreTotal };
   render();
 }
