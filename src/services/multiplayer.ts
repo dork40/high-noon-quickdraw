@@ -32,7 +32,7 @@ export interface MultiplayerService {
   cancelQuickMatch(): Promise<Room | null>;
   subscribeToQuickMatch(onMatch: (room: Room) => void, onError: (message: string) => void): () => void;
   startRound(round: MultiplayerRound): Promise<Room>;
-  submitRoundAction(roundId: string, reactionMs: number, falseStart: boolean, payload?: { score: number; progress: number; accuracy: number }): Promise<Room>;
+  submitRoundAction(roundId: string, reactionMs: number, falseStart: boolean, payload?: Partial<{ score: number; progress: number; accuracy: number; choice: import("../types").DustBluffChoice }>): Promise<Room>;
   resolveRound(roundId: string): Promise<Room>;
 }
 
@@ -211,6 +211,8 @@ export const multiplayer: MultiplayerService = {
     room = mapRoom(data);
     const current = room.roundState.round;
     if (room.status !== "playing" || !current || current.id !== roundId || current.winner) throw new MultiplayerError("That round has already ended.");
+    const gameMode = current.gameMode ?? room.mode;
+    if (gameMode === "bottle-shot" && (!current.endAt || Date.now() < Date.parse(current.endAt))) throw new MultiplayerError("Bottle Shot scores unlock when the 30-second round ends.");
     const actionKey = room.hostId === id ? "hostAction" : "guestAction";
     if (current[actionKey]) throw new MultiplayerError("You already acted this round.");
     return updateRoom({ round_state: { ...room.roundState, round: { ...current, [actionKey]: { at: new Date().toISOString(), reactionMs, ...(falseStart ? { falseStart: true } : {}), ...payload } } } });
@@ -224,13 +226,24 @@ export const multiplayer: MultiplayerService = {
     room = mapRoom(data);
     const current = room.roundState.round;
     if (!current || current.id !== roundId || current.winner) return room;
+    const gameMode = current.gameMode ?? room.mode;
+    if (gameMode === "bottle-shot" && (!current.endAt || Date.now() < Date.parse(current.endAt))) return room;
     const host = current.hostAction;
     const guest = current.guestAction;
     if (!host && !guest) return room;
-    if (room.mode === "trail-trace" && (!host || !guest)) return room;
-    const winner = room.mode === "trail-trace"
+    if ((gameMode === "trail-trace" || gameMode === "bottle-shot" || gameMode === "dust-bluff") && (!host || !guest)) return room;
+    const winner = gameMode === "trail-trace" || gameMode === "bottle-shot"
       ? (host!.score ?? 0) >= (guest!.score ?? 0) ? "host" : "guest"
+      : gameMode === "dust-bluff"
+        ? resolveDustWinner(current.hostHand ?? 0, current.guestHand ?? 0, host!.choice!, guest!.choice!)
       : host?.falseStart ? "guest" : guest?.falseStart ? "host" : !guest || (host && host.at <= guest.at) ? "host" : "guest";
-    return updateRoom({ round_state: { ...room.roundState, round: { ...current, winner, resolvedAt: new Date().toISOString() } } });
+    const hostWins = (current.seriesHostWins ?? 0) + (winner === "host" ? 1 : 0);
+    const guestWins = (current.seriesGuestWins ?? 0) + (winner === "guest" ? 1 : 0);
+    return updateRoom({ round_state: { ...room.roundState, round: { ...current, winner, resolvedAt: new Date().toISOString(), ...(room.mode === "showdown-series" ? { seriesHostWins: hostWins, seriesGuestWins: guestWins, matchWinner: hostWins === 3 ? "host" : guestWins === 3 ? "guest" : undefined } : {}) } } });
   },
 };
+
+function resolveDustWinner(hostHand: number, guestHand: number, host: import("../types").DustBluffChoice, guest: import("../types").DustBluffChoice) {
+  const beats: Record<import("../types").DustBluffChoice, import("../types").DustBluffChoice> = { draw: "hold", hold: "bluff", bluff: "draw" };
+  return host === guest ? hostHand >= guestHand ? "host" : "guest" : beats[host] === guest ? "host" : "guest";
+}
