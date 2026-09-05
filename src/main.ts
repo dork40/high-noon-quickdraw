@@ -5,7 +5,7 @@ import { multiplayer } from "./services/multiplayer";
 import type { AiDifficulty, DuelResult, GameMode, MultiplayerRound, Room, Round } from "./types";
 
 type Page = "home" | "mode-select" | "game" | "multiplayer" | "how-to";
-const appVersion = "1.9.1";
+const appVersion = "1.9.3";
 const root = document.querySelector<HTMLDivElement>("#app")!;
 let page: Page = "home";
 let mode: GameMode = "original-quick-draw";
@@ -199,6 +199,9 @@ function setupTrailCanvas(canvas: HTMLCanvasElement) {
   const disabled = canvas.dataset.disabled === "true";
   const context = canvas.getContext("2d");
   if (!context) return;
+  // A mounted canvas always represents a fresh round, never the prior trace.
+  tracePoints = [];
+  traceDrawing = false;
   const resize = () => {
     const bounds = canvas.getBoundingClientRect();
     const ratio = window.devicePixelRatio || 1;
