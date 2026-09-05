@@ -1,6 +1,6 @@
 # High Noon Showdown
 
-High Noon Showdown v1.9.1 is an original Wild West browser game with three versus-AI modes, selectable AI difficulty, and casual Supabase Realtime multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
+High Noon Showdown v1.9.2 is an original Wild West browser game with three versus-AI modes, selectable AI difficulty, and casual Supabase Realtime multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
 
 ## Run
 

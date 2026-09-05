@@ -126,6 +126,8 @@ function multiplayerGameView() {
   const opponent = isHost ? shared.guestAction : shared.hostAction;
   const wordMode = room.mode === "word-duel";
   const traceMode = room.mode === "trail-trace";
+  const ended = Boolean(shared.winner);
+  const won = shared.winner === (isHost ? "host" : "guest");
   if (traceMode) {
     const mineScore = mine?.score;
     const opponentScore = opponent?.score;
@@ -134,8 +136,6 @@ function multiplayerGameView() {
     return layout(`<section class="trace-game"><div class="trace-heading"><p class="eyebrow">LIVE TRAIL TRACE · ROOM ${room.code}</p><h1>${ended ? (won ? "YOU WIN" : "YOU LOSE") : mine ? "SCORE LOCKED" : "TRACE THE TRAIL"}</h1><p>${prompt}</p></div><canvas id="trail-canvas" class="trail-canvas" aria-label="Trace the shared winding trail" data-seed="${shared.pathSeed}" ${mine || ended ? "data-disabled=true" : ""}></canvas><p class="trace-hint">BOTH PLAYERS TRACE THIS SAME SEEDED TRAIL. HIGHEST SCORE WINS.</p>${controls}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR SCORE</span><b>${mineScore ?? "--"}</b></div><div><span>RIVAL SCORE</span><b>${opponentScore ?? "--"}</b></div><div><span>YOUR PROGRESS</span><b>${mine?.progress ?? "--"}${mine ? "%" : ""}</b></div><div><span>YOUR ACCURACY</span><b>${mine?.accuracy ?? "--"}${mine ? "%" : ""}</b></div></section>`);
   }
   const waiting = Date.now() < Date.parse(shared.startAt);
-  const ended = Boolean(shared.winner);
-  const won = shared.winner === (isHost ? "host" : "guest");
   const label = ended ? (won ? "YOU WIN" : "YOU LOSE") : waiting ? "WAIT" : wordMode ? shared.word! : "DRAW!";
   const prompt = ended ? `${mine?.falseStart ? "False start." : won ? "You were first on the signal." : "Your opponent was first on the signal."} ${isHost ? "Start the next round when ready." : "Wait for the host to start the next round."}` : waiting ? "Shared signal incoming. An early action loses." : wordMode ? "Type the shared word exactly, then press Enter." : "DRAW! Send your one shot.";
   const action = ended
@@ -441,7 +441,7 @@ function beginRound() {
   drawTimer = window.setTimeout(() => {
     const signalAt = performance.now();
     if (round.mode === "word-duel") round = { ...round, phase: "word", word: randomDuelWord(), wordAt: signalAt };
-    else round = { ...round, phase: "draw", drawAt: signalAt };
+    else if (round.mode === "original-quick-draw") round = { ...round, phase: "draw", drawAt: signalAt };
     render();
     opponentTimer = window.setTimeout(() => finish(resolveShot(round.opponentReactionMs!, round.opponentReactionMs!)), round.opponentReactionMs);
   }, timing.waitMs);
