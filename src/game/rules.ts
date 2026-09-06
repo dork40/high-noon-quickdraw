@@ -5,9 +5,6 @@ export const bottleTargetMs = 1_500;
 export const bottlesPerWave = 6;
 export const bottleMissPenalty = -10;
 export const rpsDecisionMs = 7_000;
-export const galleryRoundMs = 20_000;
-export const galleryTargetMs = 900;
-export const memoryShowMs = 2_400;
 export const ghostStarterTargetMs = 1_500;
 export type BottleKind = "green" | "blue" | "red";
 export interface BottleTarget { id: number; kind: BottleKind; x: number; y: number; }
@@ -89,19 +86,6 @@ export function aiBottleScore(difficulty: AiDifficulty) {
 
 export function aiRpsChoice(_difficulty: AiDifficulty): RpsChoice {
   return (["rock", "paper", "scissors"] as RpsChoice[])[Math.floor(Math.random() * 3)]!;
-}
-
-export function aiGalleryScore(difficulty: AiDifficulty) {
-  return difficulty === "easy" ? randomBetween(80, 120) : difficulty === "normal" ? randomBetween(120, 170) : randomBetween(170, 220);
-}
-
-export function aiMemoryScore(difficulty: AiDifficulty) {
-  return difficulty === "easy" ? randomBetween(2, 3) : difficulty === "normal" ? randomBetween(3, 4) : 4;
-}
-
-export function createMemorySequence(seed: number) {
-  const random = seededRandom(seed);
-  return Array.from({ length: 4 }, () => Math.floor(random() * 4));
 }
 
 export function resolveRps(player: RpsChoice, opponent: RpsChoice): DuelResult {

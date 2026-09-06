@@ -357,6 +357,11 @@ export const multiplayer: MultiplayerService = {
     if (!room || controller !== id || !room.guestId || !room.roundState.hostReady || !room.roundState.guestReady || (room.status !== "ready" && !prior?.winner) || prior?.matchWinner) throw new MultiplayerError("Both players must be ready before the designated round controller starts a round.");
     return updateRoom({ round_state: { ...room.roundState, round }, status: "playing" });
   },
+  async restartSeries() {
+    const id = await userId();
+    if (!room || room.mode !== "showdown-series" || room.hostId !== id || !room.guestId || !room.roundState.round?.matchWinner) throw new MultiplayerError("Only the host can start a rematch after a completed Showdown Series.");
+    return updateRoom({ round_state: { ...room.roundState, round: undefined }, status: "ready" });
+  },
 
   async submitRoundAction(roundId, reactionMs, falseStart, payload) {
     const id = await userId();
@@ -392,11 +397,11 @@ export const multiplayer: MultiplayerService = {
     const hinted = peerActions.get(roundId);
     const hostAction = host ?? hinted?.hostAction;
     const guestAction = guest ?? hinted?.guestAction;
-    if ((gameMode === "trail-trace" || gameMode === "bottle-shot" || gameMode === "target-gallery" || gameMode === "memory-spark" || gameMode === "rock-paper-scissors") && (!hostAction || !guestAction)) return room;
+    if ((gameMode === "trail-trace" || gameMode === "bottle-shot" || gameMode === "rock-paper-scissors") && (!hostAction || !guestAction)) return room;
     const reactionRace = gameMode === "original-quick-draw" || gameMode === "word-duel";
     if (reactionRace && (!hostAction || !guestAction) && !allowSingleReaction) return room;
     const tieToleranceMs = 3;
-    const winner = gameMode === "trail-trace" || gameMode === "bottle-shot" || gameMode === "target-gallery" || gameMode === "memory-spark"
+    const winner = gameMode === "trail-trace" || gameMode === "bottle-shot"
       ? (hostAction!.score ?? 0) === (guestAction!.score ?? 0) ? "tie" : (hostAction!.score ?? 0) > (guestAction!.score ?? 0) ? "host" : "guest"
       : gameMode === "rock-paper-scissors"
         ? resolveRpsWinner(hostAction!.choice!, guestAction!.choice!)
