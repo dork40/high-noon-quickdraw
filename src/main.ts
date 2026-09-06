@@ -6,7 +6,7 @@ import { multiplayer } from "./services/multiplayer";
 import type { AiDifficulty, DuelResult, DirectGameMode, GameMode, MultiplayerRound, Room, Round, RpsChoice } from "./types";
 
 type Page = "home" | "mode-select" | "game" | "multiplayer" | "how-to";
-const appVersion = "2.3.0";
+const appVersion = "2.4.0";
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const mobileViewport = window.matchMedia("(max-width: 700px)");
 let page: Page = "home";
@@ -28,6 +28,7 @@ let stopQuickMatchSubscription: (() => void) | undefined;
 let multiplayerActionBusy = false;
 let sharedStartPending = false;
 let multiplayerSession = 0;
+let multiplayerSignal: { roundId: string; at: number } | undefined;
 let tracePoints: TrailPoint[] = [];
 let traceDrawing = false;
 let bottleScoreTotal = 0;
@@ -66,7 +67,7 @@ function nav(next: Page) {
 
 function layout(content: string) {
   return `<main class="shell">
-    <header class="masthead"><button class="brand" data-page="home" aria-label="High Noon Showdown home"><span>HN</span> HIGH NOON SHOWDOWN</button><nav><button id="sound-toggle" aria-pressed="${isMuted()}">${isMuted() ? "UNMUTE" : "MUTE"}</button><button data-page="mode-select">PLAY</button><button data-page="multiplayer">MULTIPLAYER</button><button data-page="how-to">HOW TO PLAY</button></nav></header>
+    <header class="masthead"><button class="brand" data-page="home" aria-label="High Noon Showdown home"><span>HN</span> HIGH NOON SHOWDOWN</button><nav><button data-page="home">HOME</button><button id="sound-toggle" aria-pressed="${isMuted()}">${isMuted() ? "UNMUTE" : "MUTE"}</button><button data-page="mode-select">PLAY</button><button data-page="multiplayer">MULTIPLAYER</button><button data-page="how-to">HOW TO PLAY</button></nav></header>
     ${content}
     <footer><span>ORIGINAL WESTERN DUEL GAME</span><span>ONE BELL. ONE SHOT.</span><span>VERSION ${appVersion}</span></footer>
   </main>`;
@@ -105,7 +106,7 @@ function toggleFullscreen() {
 }
 
 function homeView() {
-  return layout(`<section class="hero"><div class="sun"></div><div class="mesa mesa-far"></div><div class="mesa mesa-near"></div><div class="dust"></div><div class="hero-copy"><p class="eyebrow">A QUICK-DRAW DUEL AT SUNSET</p><h1>HIGH NOON<br><i>SHOWDOWN</i></h1><p class="lead">Face Ash in reflex, precision, nerve, or a best-of-five showdown.</p><div class="hero-actions"><button class="primary" data-page="mode-select">PLAY VS AI</button><button class="outline" data-page="how-to">HOW TO PLAY</button></div></div><p class="corner-note">NO EXTERNAL ASSETS<br>ORIGINAL FRONTIER TALE</p></section>
+  return layout(`<section class="hero"><div class="sun"></div><div class="mesa mesa-far"></div><div class="mesa mesa-near"></div><div class="dust"></div><div class="hero-copy"><p class="eyebrow">A QUICK-DRAW DUEL AT SUNSET</p><h1>HIGH NOON<br><i>SHOWDOWN</i></h1><p class="lead">Face Ash in reflex, precision, nerve, or a best-of-five showdown.</p><div class="hero-actions"><div class="hero-primary-actions"><button class="primary" data-page="mode-select">PLAY VS AI</button><button class="primary" data-page="multiplayer">MULTIPLAYER</button></div><button class="outline hero-how-to" data-page="how-to">HOW TO PLAY</button></div></div><p class="corner-note">NO EXTERNAL ASSETS<br>ORIGINAL FRONTIER TALE</p></section>
   <section class="home-cards"><article><b>01</b><h2>Choose your duel.</h2><p>Quick Draw, Word Duel, or Trail Trace: each tests a different skill.</p></article><article><b>02</b><h2>Hold your line.</h2><p>Trail Trace rewards distance travelled and how accurately you follow its course.</p></article><article><b>${stats.best ?? "--"}</b><h2>Local best.</h2><p>Milliseconds from signal to a winning action.</p></article></section>`);
 }
 
@@ -191,7 +192,7 @@ function multiplayerGameView() {
     const controls = ended ? `<div class="duel-actions">${isHost ? `<button id="next-round" class="primary">NEXT ROUND</button>` : ""}<button id="leave-duel" class="outline">LEAVE ROOM</button></div>` : "";
     return layout(`<section class="trace-game"><div class="trace-heading"><p class="eyebrow">LIVE TRAIL TRACE · ROOM ${room.code}</p><h1>${ended ? (won ? "YOU WIN" : "YOU LOSE") : mine ? "SCORE LOCKED" : "TRACE THE TRAIL"}</h1><p>${prompt}</p></div><canvas id="trail-canvas" class="trail-canvas" aria-label="Trace the shared winding trail" data-seed="${shared.pathSeed}" ${mine || ended ? "data-disabled=true" : ""}></canvas><p class="trace-hint">BOTH PLAYERS TRACE THIS SAME SEEDED TRAIL. HIGHEST SCORE WINS.</p>${controls}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR SCORE</span><b>${mineScore ?? "--"}</b></div><div><span>RIVAL SCORE</span><b>${opponentScore ?? "--"}</b></div><div><span>YOUR PROGRESS</span><b>${mine?.progress ?? "--"}${mine ? "%" : ""}</b></div><div><span>YOUR ACCURACY</span><b>${mine?.accuracy ?? "--"}${mine ? "%" : ""}</b></div></section>`);
   }
-  const waiting = Date.now() < Date.parse(shared.startAt);
+  const waiting = !multiplayerSignal || multiplayerSignal.roundId !== shared.id;
   const label = ended ? (shared.winner === "tie" ? "TIE" : won ? "YOU WIN" : "YOU LOSE") : waiting ? "WAIT" : activeMode === "word-duel" ? shared.word! : "DRAW!";
   const prompt = ended ? `${mine?.falseStart ? "False start." : won ? "You were first on the signal." : "Your opponent was first on the signal."} ${shared.matchWinner ? "Series complete." : isHost ? "Start the next round when ready." : "Wait for the host to start the next round."}` : waiting ? "Shared signal incoming. An early action loses." : activeMode === "word-duel" ? "Type the shared word exactly, then press Enter." : "DRAW! Send your one shot.";
   const action = ended
@@ -274,7 +275,7 @@ function render() {
   root.querySelector("#fullscreen-toggle")?.addEventListener("click", toggleFullscreen);
   const canvas = root.querySelector<HTMLCanvasElement>("#trail-canvas");
   if (canvas) setupTrailCanvas(canvas);
-  if ((round.mode === "word-duel" && round.phase === "word") || (multiplayerRoom?.status === "playing" && multiplayerRoom.mode === "word-duel" && Date.now() >= Date.parse(multiplayerRoom.roundState.round?.startAt ?? ""))) window.setTimeout(() => root.querySelector<HTMLInputElement>("#word-input")?.focus(), 0);
+  if ((round.mode === "word-duel" && round.phase === "word") || (multiplayerRoom?.status === "playing" && multiplayerRoom.mode === "word-duel" && multiplayerSignal?.roundId === multiplayerRoom.roundState.round?.id)) window.setTimeout(() => root.querySelector<HTMLInputElement>("#word-input")?.focus(), 0);
 }
 
 function setupTrailCanvas(canvas: HTMLCanvasElement) {
@@ -385,6 +386,7 @@ function resetMultiplayerState() {
   multiplayerUserId = null;
   multiplayerActionBusy = false;
   sharedStartPending = false;
+  multiplayerSignal = undefined;
   quickMatchStatus = "idle";
   quickMatchNotice = "";
 }
@@ -465,6 +467,7 @@ async function startMultiplayerRound() {
 
 function syncMultiplayerRound(shared: MultiplayerRound) {
   clearTimers();
+  if (multiplayerSignal?.roundId !== shared.id) multiplayerSignal = undefined;
   if ((shared.gameMode ?? multiplayerRoom?.mode) === "rock-paper-scissors" && shared.decisionEndsAt) {
     const decisionEndsAt = Date.parse(shared.decisionEndsAt);
     const refresh = () => {
@@ -491,18 +494,45 @@ function syncMultiplayerRound(shared: MultiplayerRound) {
     drawTimer = window.setTimeout(refresh, Math.max(0, Date.parse(shared.startAt) - Date.now()));
     return;
   }
-  const delay = Date.parse(shared.startAt) - Date.now();
-  if (!shared.winner && delay > 0) drawTimer = window.setTimeout(() => { if (page === "game") render(); }, delay + 5);
+  // Room action updates must not restart an already rendered reaction clock.
+  if (multiplayerSignal?.roundId === shared.id) return;
+  const activateSignal = () => {
+    const current = multiplayerRoom?.roundState.round;
+    if (!current || current.id !== shared.id || current.winner) return;
+    // Render the local signal first; only then start this browser's reaction clock.
+    multiplayerSignal = { roundId: shared.id, at: 0 };
+    render();
+    multiplayerSignal.at = performance.now();
+    playSound("signal");
+  };
+  const delay = multiplayer.localStartAt(shared.startAt) - Date.now();
+  if (!shared.winner) {
+    if (delay <= 0) activateSignal();
+    else drawTimer = window.setTimeout(activateSignal, delay);
+  }
 }
 
 async function resolveMultiplayerRound(roundId: string) {
   const session = multiplayerSession;
   try {
     const nextRoom = await multiplayer.resolveRound(roundId);
-    if (session === multiplayerSession) multiplayerRoom = nextRoom;
+    if (session === multiplayerSession) {
+      multiplayerRoom = nextRoom;
+      const shared = nextRoom.roundState.round;
+      const reactionRace = (shared?.gameMode ?? nextRoom.mode) === "original-quick-draw" || (shared?.gameMode ?? nextRoom.mode) === "word-duel";
+      if (reactionRace && shared && !shared.winner && Boolean(shared.hostAction) !== Boolean(shared.guestAction)) scheduleReactionFallback(roundId);
+    }
   } catch (error) {
     if (session === multiplayerSession) multiplayerNotice = error instanceof Error ? error.message : "Unable to resolve the round.";
   }
+}
+function scheduleReactionFallback(roundId: string) {
+  window.setTimeout(() => {
+    const current = multiplayerRoom?.roundState.round;
+    if (multiplayerRoom?.hostId === multiplayerUserId && current?.id === roundId && !current.winner) {
+      void multiplayer.resolveRound(roundId, true).then(next => { multiplayerRoom = next; if (page === "game") render(); }).catch(() => undefined);
+    }
+  }, 1200);
 }
 
 async function sendMultiplayerAction(falseStartAction = false) {
@@ -515,8 +545,9 @@ async function sendMultiplayerAction(falseStartAction = false) {
   multiplayerActionBusy = true;
   render();
   try {
-    const reactionMs = Math.max(0, Math.round(Date.now() - Date.parse(shared.startAt)));
-    const falseStart = falseStartAction || reactionMs === 0 && Date.now() < Date.parse(shared.startAt);
+    const signal = multiplayerSignal?.roundId === shared.id ? multiplayerSignal : undefined;
+    const falseStart = falseStartAction || !signal;
+    const reactionMs = falseStart ? 0 : Math.max(0, Math.round(performance.now() - signal!.at));
     multiplayer.sendLiveAction({ roundId: shared.id, reactionMs, falseStart });
     const nextRoom = await multiplayer.submitRoundAction(shared.id, reactionMs, falseStart);
     if (session !== multiplayerSession) return;
@@ -640,11 +671,14 @@ function beginRound() {
     : { number: round.number + 1, mode: "original-quick-draw", phase: "waiting", opponentReactionMs: timing.opponentReactionMs };
   render();
   drawTimer = window.setTimeout(() => {
-    const signalAt = performance.now();
-    if (round.mode === "word-duel") round = { ...round, phase: "word", word: randomDuelWord(), wordAt: signalAt };
-    else if (round.mode === "original-quick-draw") round = { ...round, phase: "draw", drawAt: signalAt };
-    playSound("signal");
+    if (round.mode === "word-duel") round = { ...round, phase: "word", word: randomDuelWord() };
+    else if (round.mode === "original-quick-draw") round = { ...round, phase: "draw" };
     render();
+    // The signal is now visible and its control is interactive on this browser.
+    const signalAt = performance.now();
+    if (round.mode === "word-duel") round = { ...round, wordAt: signalAt };
+    else if (round.mode === "original-quick-draw") round = { ...round, drawAt: signalAt };
+    playSound("signal");
     opponentTimer = window.setTimeout(() => finish(resolveShot(round.opponentReactionMs!, round.opponentReactionMs!)), round.opponentReactionMs);
   }, timing.waitMs);
 }
@@ -696,7 +730,7 @@ function takeAction(allowFalseStart = false) {
   playSound("click");
   if (multiplayerRoom?.status === "playing") {
     const shared = multiplayerRoom.roundState.round;
-    const early = shared && Date.now() < Date.parse(shared.startAt);
+    const early = shared && multiplayerSignal?.roundId !== shared.id;
     if (shared && (!early || allowFalseStart)) void sendMultiplayerAction(early);
     return;
   }

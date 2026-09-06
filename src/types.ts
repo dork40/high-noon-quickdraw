@@ -13,6 +13,7 @@ export interface Player { id: string; name: string; wins: number; losses: number
 export type RoomStatus = "lobby" | "ready" | "playing";
 export interface RoundAction {
   at: string;
+  // Measured locally from the signal's rendered/interactive moment with performance.now().
   reactionMs: number;
   falseStart?: boolean;
   score?: number;

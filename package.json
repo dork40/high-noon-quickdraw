@@ -1,7 +1,7 @@
 {
   "name": "high-noon-showdown",
   "private": true,
-  "version": "2.3.0",
+  "version": "2.4.0",
   "type": "module",
   "scripts": { "dev": "vite", "build": "tsc && vite build", "preview": "vite preview" },
   "dependencies": { "@supabase/supabase-js": "^2.49.1" },
