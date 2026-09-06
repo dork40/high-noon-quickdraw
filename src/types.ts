@@ -1,5 +1,7 @@
 export type DirectGameMode = "original-quick-draw" | "word-duel" | "trail-trace" | "bottle-shot" | "rock-paper-scissors";
-export type GameMode = DirectGameMode | "showdown-series";
+export type AiGameMode = DirectGameMode | "ghost-challenge";
+export type MultiplayerGameMode = DirectGameMode | "showdown-series";
+export type GameMode = AiGameMode | "showdown-series";
 export type AiDifficulty = "easy" | "normal" | "hard";
 export type WordDuelPhase = "menu" | "waiting" | "word" | "result";
 export type OriginalQuickDrawPhase = "menu" | "waiting" | "draw" | "result";
@@ -45,6 +47,8 @@ export interface MultiplayerRound {
 export interface RoomRoundState {
   hostReady: boolean;
   guestReady: boolean;
+  hostName?: string;
+  guestName?: string;
   round?: MultiplayerRound;
   event?: { type: string; at: string; payload?: Record<string, unknown> };
 }
@@ -52,14 +56,14 @@ export interface Room {
   code: string;
   hostId: string;
   guestId: string | null;
-  mode: GameMode;
+  mode: MultiplayerGameMode;
   status: RoomStatus;
   roundState: RoomRoundState;
   createdAt: string;
 }
 export interface QuickMatchQueueEntry {
   userId: string;
-  mode: GameMode;
+  mode: MultiplayerGameMode;
   roomCode: string | null;
   createdAt: string;
   matchedAt: string | null;
@@ -67,11 +71,28 @@ export interface QuickMatchQueueEntry {
 export interface BaseRound { number: number; opponentReactionMs?: number; result?: DuelResult; }
 export interface WordDuelRound extends BaseRound { mode: "word-duel"; phase: WordDuelPhase; word?: DuelWord; wordAt?: number; }
 export interface OriginalQuickDrawRound extends BaseRound { mode: "original-quick-draw"; phase: OriginalQuickDrawPhase; drawAt?: number; }
+export interface GhostChallengeRound extends BaseRound { mode: "ghost-challenge"; phase: OriginalQuickDrawPhase; drawAt?: number; }
 export interface TrailTraceRound extends BaseRound { mode: "trail-trace"; phase: TrailTracePhase; pathSeed: number; playerScore?: number; playerProgress?: number; playerAccuracy?: number; }
 export interface BottleShotRound extends BaseRound { mode: "bottle-shot"; phase: BottleShotPhase; targetSeed: number; startAt?: number; endAt?: number; playerScore?: number; }
 export type RpsChoice = "rock" | "paper" | "scissors";
 export interface RpsRound extends BaseRound { mode: "rock-paper-scissors"; phase: RpsPhase; decisionEndsAt?: number; playerChoice?: RpsChoice; opponentChoice?: RpsChoice; }
-export type Round = WordDuelRound | OriginalQuickDrawRound | TrailTraceRound | BottleShotRound | RpsRound;
+export type Round = WordDuelRound | OriginalQuickDrawRound | GhostChallengeRound | TrailTraceRound | BottleShotRound | RpsRound;
 export interface DuelResult { outcome: DuelOutcome; reactionMs?: number; opponentReactionMs: number; message: string; }
 export interface GameSettings { minWaitMs: number; maxWaitMs: number; minOpponentReactionMs: number; maxOpponentReactionMs: number; }
 export type DuelWord = "SHOOT" | "DRAW" | "POW";
+
+export type QueueKind = "casual" | "ranked";
+export interface LocalModeStats { played: number; wins: number; losses: number; bestReactionMs: number | null; }
+export interface PlayerProfile {
+  displayName: string;
+  title: "Dusty Greenhorn" | "Trail Scout" | "Bell Keeper" | "High Noon Legend";
+  badges: string[];
+  winStreak: number;
+  bestWinStreak: number;
+  modes: Partial<Record<GameMode, LocalModeStats>>;
+}
+export interface AuthorityConfig {
+  url: string;
+  rankedAvailable: boolean;
+}
+export interface TurnCredentials { iceServers: RTCIceServer[]; expiresAt: string; }

@@ -1,6 +1,6 @@
 # High Noon Showdown
 
-High Noon Showdown v2.5.0 is an original Wild West browser game with Rock Paper Scissors, synthesized Web Audio effects, and casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
+High Noon Showdown v3.0.1 is an original Wild West browser game with local player progression, synthesized Web Audio effects, an AI-only Ghost Challenge personal-best race, and clearly labeled casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
 
 ## Run
 
@@ -14,6 +14,7 @@ Copy `.env.example` to `.env.local` and add the Supabase values before using mul
 ## Controls
 
 - Quick Draw: click, tap, or press Space after `DRAW!`. On phones, the wait state has no shoot control; a large safe-area-aware Shoot button appears only at the signal.
+- Beat Your Best / Ghost Challenge: use Quick Draw controls to beat your saved personal-best reaction. Before a record exists, the game labels a 1500 ms starter target; the first successful draw becomes your record.
 - Word Duel: type the shown word in either uppercase or lowercase, then press Enter.
 - Trail Trace: press and hold on the canvas, follow the winding gold path, then release to submit a score based on progress and accuracy.
 - Rock Paper Scissors: choose Rock, Paper, or Scissors simultaneously in a best-of-five match; first to three round wins takes the match.
@@ -188,23 +189,24 @@ $$;
 
 In the Supabase dashboard, Database > Replication is the equivalent place to enable `duel_rooms` and `quick_match_queue`.
 
-Set these Vercel environment variables for each environment you deploy:
+Set these public Vite environment variables in your static-host build configuration:
 
 ```text
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_PUBLISHABLE_KEY=your-anon-or-publishable-key
 ```
 
-Use the project's publishable/anon key only. Never expose a service-role key in Vite or Vercel client variables. Redeploy after changing Vercel variables because Vite embeds them at build time.
+Use the project's publishable/anon key only. Never expose a service-role key in Vite client variables. Rebuild after changing public variables because Vite embeds them at build time.
 
 ## Modes And Controls
 
 - **Original Quick Draw:** after a random 2-6 second wait, `DRAW!` appears. Click, tap, or press `Space` once to shoot before the AI reacts. The reaction clock starts with `performance.now()` immediately after the local `DRAW!` UI is rendered and interactive. Mobile AI and live rounds show a wait-only state without a shoot control, then reveal a large tap-safe Shoot button at `DRAW!`.
+- **Beat Your Best / Ghost Challenge:** an AI-only Quick Draw race against your saved personal-best reaction, using the same random wait, local `performance.now()` clock, and false-start rules. Beat the target to win and immediately replace it with your faster time. With no saved personal best, the clearly labeled approachable **1500 ms starter target** is used; your first success becomes the record. Ghost Challenge is not available in rooms, Quick Game, or Showdown Series.
 - **Word Duel:** after a random wait, type `SHOOT`, `DRAW`, or `POW` exactly and press Enter. Its local reaction clock starts immediately after the word input is rendered and enabled.
 - **Trail Trace:** trace the generated winding target line with a mouse, touch, or pen. The final score combines farthest target progress with average line accuracy, with a small completion bonus.
 - **Bottle Shot:** a 30-second target range with six smaller, touch-accessible bottles visible at once. Click or tap each active bottle once to break it: green and blue bottles add +10, while the more-common red bottles subtract 10. A shot or tap on the range that misses an active bottle also subtracts 10. A new seeded six-bottle wave appears every 1.5 seconds; Ash's target hits, red-bottle mistakes, and range misses vary by difficulty.
 - **Rock Paper Scissors:** a simultaneous best-of-five, first-to-three match. Rock beats Scissors, Scissors beats Paper, and Paper beats Rock; matching choices tie and replay without awarding a round.
-- **Showdown Series:** best of five, first to three wins. Every round randomly selects Quick Draw, Word Duel, Trail Trace, Bottle Shot, or Rock Paper Scissors. In multiplayer, the prior-round winner controls the next round; a tie returns control to the host for a replay. AI series behavior remains unchanged.
+- **Showdown Series:** best of five, first to three wins. Every round randomly selects Quick Draw, Word Duel, Trail Trace, Bottle Shot, or Rock Paper Scissors. Ghost Challenge is excluded. In multiplayer, the prior-round winner controls the next round; a tie returns control to the host for a replay. AI series behavior remains unchanged.
 - In every AI mode, acting before the signal is a false start and loses the round.
 
 Before starting a versus-AI mode, choose Ash Mercer's difficulty: **Easy** reacts randomly in 1200-2200 ms and traces around 48-72 points, **Normal** reacts randomly in 550-1400 ms and traces around 68-88 points, and **Hard** reacts randomly in 250-650 ms and traces around 84-98 points. Trail Trace begins immediately; the two existing signal modes keep their random 2-6 second waiting period. The active difficulty appears during the AI duel, and wins, losses, and the fastest successful reaction remain stored locally when browser storage is available.
@@ -228,7 +230,19 @@ For Trail Trace, the deterministic path is scored locally and a submission is ac
 
 ### SQL Requirement
 
-Existing users must rerun the v2.3.0 SQL block to replace the retired prior mode with `rock-paper-scissors` in room, Quick Game queue, and RPC allowlists. v2.5.0 requires no SQL update: queue restoration/polling and Showdown next-round control use the existing queue primary key, RPCs, room JSON state, and RLS policies.
+Existing users must rerun the v2.3.0 SQL block to replace the retired prior mode with `rock-paper-scissors` in room, Quick Game queue, and RPC allowlists. v3.0.1 needs no schema migration: Ghost Challenge is local-only and its record uses the existing browser profile storage.
+
+## Profile, Queues, And Authority
+
+`PROFILE` stores a display name, original frontier title, badges, streaks, mode results, and best successful draw locally in browser storage. It requires no external account. Room hosts and guests share the display name they entered only in that room's `round_state`; do not use it for identity or moderation.
+
+Multiplayer begins with an explicit **Casual** or **Ranked** choice. Casual is the existing Supabase/WebRTC implementation, so its P2P/fallback badge and the limits above remain visible. Ranked intentionally cannot queue, simulate a match, or award a ranking in this release. A real ranked deployment needs authoritative timing, verified identities, durable match records, anti-abuse controls, and an operational endpoint.
+
+`VITE_AUTHORITY_URL` is optional and must be an HTTPS URL (or localhost during development). When set, the browser can request short-lived TURN credentials from the service and otherwise keeps its visible database fallback. It is not a ranked switch. Server-side TURN secrets belong only in `server/.env`; see [`server/README.md`](server/README.md) for a Docker-compatible deployment foundation and the explicitly unfinished production requirements.
+
+## Validation
+
+GitHub Actions in `.github/workflows/build.yml` installs and builds both the browser client and `server/` on every push and pull request. The repository intentionally has no lockfile, so the workflow uses `npm install` rather than `npm ci`.
 
 ## Files
 
@@ -237,3 +251,5 @@ Existing users must rerun the v2.3.0 SQL block to replace the retired prior mode
 - `src/main.ts` - browser UI, AI gameplay, and multiplayer lobby wiring
 - `src/game/rules.ts` - pure versus-AI timing and duel resolution rules
 - `src/style.css` - responsive Bottle Shot range and mobile-safe target styling
+- `src/services/authority.ts` - optional, safe authority URL and TURN credential contract
+- `server/` - separately deployable HTTP/WebSocket and TURN credential foundation; not a production ranked system

@@ -1,19 +1,20 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
-import type { GameMode, MultiplayerRound, QuickMatchQueueEntry, Room, RoomRoundState, RoomStatus, RpsChoice } from "../types";
+import type { MultiplayerGameMode, MultiplayerRound, QuickMatchQueueEntry, Room, RoomRoundState, RoomStatus, RpsChoice } from "../types";
 import { minimumTrailAccuracy, minimumTrailProgress } from "../game/trail";
+import { fetchTurnCredentials } from "./authority";
 
 type RoomRow = {
   code: string;
   host_id: string;
   guest_id: string | null;
-  mode: GameMode;
+  mode: MultiplayerGameMode;
   status: RoomStatus;
   round_state: RoomRoundState | null;
   created_at: string;
 };
 type QuickMatchQueueRow = {
   user_id: string;
-  mode: GameMode;
+  mode: MultiplayerGameMode;
   room_code: string | null;
   created_at: string;
   matched_at: string | null;
@@ -24,13 +25,14 @@ export class MultiplayerError extends Error {}
 export interface MultiplayerService {
   isConfigured(): boolean;
   authenticate(): Promise<string>;
-  createRoom(mode?: GameMode): Promise<Room>;
+  createRoom(mode?: MultiplayerGameMode): Promise<Room>;
   joinRoom(code: string): Promise<Room>;
   setReady(ready: boolean): Promise<Room>;
+  setDisplayName(name: string): Promise<Room>;
   leaveRoom(): Promise<void>;
   subscribeToRoom(onRoom: (room: Room | null) => void, onError: (message: string) => void): () => void;
-  requestQuickMatch(mode: GameMode): Promise<Room | null>;
-  restoreQuickMatch(): Promise<{ mode: GameMode; room: Room | null } | null>;
+  requestQuickMatch(mode: MultiplayerGameMode): Promise<Room | null>;
+  restoreQuickMatch(): Promise<{ mode: MultiplayerGameMode; room: Room | null } | null>;
   cancelQuickMatch(): Promise<Room | null>;
   subscribeToQuickMatch(onMatch: (room: Room) => void, onError: (message: string) => void): () => void;
   startRound(round: MultiplayerRound): Promise<Room>;
@@ -126,7 +128,9 @@ async function sendSignal(payload: Record<string, unknown>) {
 async function ensurePeer(initiator: boolean) {
   if (!room?.guestId || peer || typeof RTCPeerConnection === "undefined") return;
   transport = "connecting";
-  peer = new RTCPeerConnection({ iceServers: [{ urls: "stun:stun.l.google.com:19302" }, { urls: "stun:global.stun.twilio.com:3478" }] });
+  const turn = await fetchTurnCredentials();
+  // TURN credentials are optional and short-lived; public STUN preserves casual fallback.
+  peer = new RTCPeerConnection({ iceServers: [...(turn?.iceServers ?? []), { urls: "stun:stun.l.google.com:19302" }] });
   peer.onicecandidate = event => { if (event.candidate) void sendSignal({ type: "ice", candidate: event.candidate.toJSON() }); };
   peer.onconnectionstatechange = () => { if (!peer || ["failed", "disconnected", "closed"].includes(peer.connectionState)) transport = "fallback"; };
   peer.ondatachannel = event => attachDataChannel(event.channel);
@@ -231,6 +235,12 @@ export const multiplayer: MultiplayerService = {
     const state = { ...room.roundState, [room.hostId === id ? "hostReady" : "guestReady"]: ready };
     const status: RoomStatus = room.guestId && state.hostReady && state.guestReady ? "ready" : "lobby";
     return updateRoom({ round_state: state, status });
+  },
+  async setDisplayName(name) {
+    const id = await userId();
+    if (!room || (room.hostId !== id && room.guestId !== id)) throw new MultiplayerError("You are not seated in this room.");
+    const cleanName = name.trim().replace(/\s+/g, " ").slice(0, 24) || "Unnamed Drifter";
+    return updateRoom({ round_state: { ...room.roundState, [room.hostId === id ? "hostName" : "guestName"]: cleanName } });
   },
 
   async leaveRoom() {

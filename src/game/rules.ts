@@ -5,6 +5,7 @@ export const bottleTargetMs = 1_500;
 export const bottlesPerWave = 6;
 export const bottleMissPenalty = -10;
 export const rpsDecisionMs = 7_000;
+export const ghostStarterTargetMs = 1_500;
 export type BottleKind = "green" | "blue" | "red";
 export interface BottleTarget { id: number; kind: BottleKind; x: number; y: number; }
 
