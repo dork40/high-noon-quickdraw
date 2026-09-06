@@ -1,6 +1,6 @@
 # High Noon Showdown
 
-High Noon Showdown v3.1.3 is an original Wild West browser game with local player progression, synthesized Web Audio effects, an AI-only Ghost Challenge personal-best race, and clearly labeled casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
+High Noon Showdown v3.2.1 is an original Wild West browser game with local player progression, synthesized Web Audio effects, an AI-only Ghost Challenge personal-best race, two new original skill modes, optional authenticated TURN relay support, and clearly labeled casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
 
 ## v3.1.0 Visual Refresh
 
@@ -36,7 +36,7 @@ create table if not exists public.duel_rooms (
   code text primary key check (code ~ '^[A-Z0-9]{6}$'),
   host_id uuid not null references auth.users(id) on delete cascade,
   guest_id uuid references auth.users(id) on delete set null,
-  mode text not null default 'original-quick-draw' check (mode in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'rock-paper-scissors', 'showdown-series')),
+  mode text not null default 'original-quick-draw' check (mode in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'target-gallery', 'memory-spark', 'rock-paper-scissors', 'showdown-series')),
   status text not null default 'lobby' check (status in ('lobby', 'ready', 'playing')),
   round_state jsonb not null default '{"hostReady": false, "guestReady": false}'::jsonb,
   created_at timestamptz not null default now()
@@ -44,9 +44,9 @@ create table if not exists public.duel_rooms (
 
 alter table public.duel_rooms enable row level security;
 
-delete from public.duel_rooms where mode not in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'rock-paper-scissors', 'showdown-series');
+delete from public.duel_rooms where mode not in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'target-gallery', 'memory-spark', 'rock-paper-scissors', 'showdown-series');
 alter table public.duel_rooms drop constraint if exists duel_rooms_mode_check;
-alter table public.duel_rooms add constraint duel_rooms_mode_check check (mode in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'rock-paper-scissors', 'showdown-series'));
+alter table public.duel_rooms add constraint duel_rooms_mode_check check (mode in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'target-gallery', 'memory-spark', 'rock-paper-scissors', 'showdown-series'));
 
 drop policy if exists "duel rooms are readable by signed-in players" on public.duel_rooms;
 drop policy if exists "signed-in players can create rooms" on public.duel_rooms;
@@ -70,7 +70,7 @@ on public.duel_rooms for delete to authenticated using (auth.uid() = host_id);
 
 create table if not exists public.quick_match_queue (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  mode text not null constraint quick_match_queue_mode_check check (mode in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'rock-paper-scissors', 'showdown-series')),
+  mode text not null constraint quick_match_queue_mode_check check (mode in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'target-gallery', 'memory-spark', 'rock-paper-scissors', 'showdown-series')),
   room_code text references public.duel_rooms(code) on delete set null,
   created_at timestamptz not null default now(),
   matched_at timestamptz
@@ -78,9 +78,9 @@ create table if not exists public.quick_match_queue (
 
 alter table public.quick_match_queue enable row level security;
 
-delete from public.quick_match_queue where mode not in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'rock-paper-scissors', 'showdown-series');
+delete from public.quick_match_queue where mode not in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'target-gallery', 'memory-spark', 'rock-paper-scissors', 'showdown-series');
 alter table public.quick_match_queue drop constraint if exists quick_match_queue_mode_check;
-alter table public.quick_match_queue add constraint quick_match_queue_mode_check check (mode in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'rock-paper-scissors', 'showdown-series'));
+alter table public.quick_match_queue add constraint quick_match_queue_mode_check check (mode in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'target-gallery', 'memory-spark', 'rock-paper-scissors', 'showdown-series'));
 
 drop policy if exists "players can read their quick match entry" on public.quick_match_queue;
 drop policy if exists "players can add their quick match entry" on public.quick_match_queue;
@@ -110,7 +110,7 @@ declare
   v_code text;
 begin
   if v_user_id is null then raise exception 'Authentication required'; end if;
-  if p_mode not in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'rock-paper-scissors', 'showdown-series') then raise exception 'Invalid duel mode'; end if;
+  if p_mode not in ('original-quick-draw', 'word-duel', 'trail-trace', 'bottle-shot', 'target-gallery', 'memory-spark', 'rock-paper-scissors', 'showdown-series') then raise exception 'Invalid duel mode'; end if;
 
   -- One lock per mode makes selecting a waiting player and assigning both seats atomic.
   perform pg_advisory_xact_lock(hashtextextended('high-noon-quick-match:' || p_mode, 0));
@@ -209,8 +209,10 @@ Use the project's publishable/anon key only. Never expose a service-role key in 
 - **Word Duel:** after a random wait, type `SHOOT`, `DRAW`, or `POW` exactly and press Enter. Its local reaction clock starts immediately after the word input is rendered and enabled.
 - **Trail Trace:** trace the generated winding target line with a mouse, touch, or pen. The final score combines farthest target progress with average line accuracy, with a small completion bonus.
 - **Bottle Shot:** a 30-second target range with six smaller, touch-accessible bottles visible at once. Click or tap each active bottle once to break it: green and blue bottles add +10, while the more-common red bottles subtract 10. A shot or tap on the range that misses an active bottle also subtracts 10. A new seeded six-bottle wave appears every 1.5 seconds; Ash's target hits, red-bottle mistakes, and range misses vary by difficulty.
+- **Target Gallery:** a 20-second, one-target moving brass range. Tap or click the large target before its next move; every hit is +10. It is available against Ash, in Casual/Quick Game rooms, and in Showdown Series.
+- **Memory Spark:** study four seeded lantern marks, then tap the same order from four large choices. Correct positions form the score. It is available against Ash, in Casual/Quick Game rooms, and in Showdown Series.
 - **Rock Paper Scissors:** a simultaneous best-of-five, first-to-three match. Rock beats Scissors, Scissors beats Paper, and Paper beats Rock; matching choices tie and replay without awarding a round.
-- **Showdown Series:** best of five, first to three wins. Every round randomly selects Quick Draw, Word Duel, Trail Trace, Bottle Shot, or Rock Paper Scissors. Ghost Challenge is excluded. In multiplayer, the prior-round winner controls the next round; a tie returns control to the host for a replay. AI series behavior remains unchanged.
+- **Showdown Series:** best of five, first to three wins. Every round randomly selects Quick Draw, Word Duel, Trail Trace, Bottle Shot, Target Gallery, Memory Spark, or Rock Paper Scissors. Ghost Challenge is excluded. In multiplayer, the prior-round winner controls the next round; a tie returns control to the host for a replay. AI series behavior remains unchanged.
 - In every AI mode, acting before the signal is a false start and loses the round.
 
 Before starting a versus-AI mode, choose Ash Mercer's difficulty: **Easy** reacts randomly in 1200-2200 ms and traces around 48-72 points, **Normal** reacts randomly in 550-1400 ms and traces around 68-88 points, and **Hard** reacts randomly in 250-650 ms and traces around 84-98 points. Trail Trace begins immediately; the two existing signal modes keep their random 2-6 second waiting period. The active difficulty appears during the AI duel, and wins, losses, and the fastest successful reaction remain stored locally when browser storage is available.
@@ -228,13 +230,13 @@ For Trail Trace, the deterministic path is scored locally and a submission is ac
 ### Transport Guarantees And Limits
 
 - A connected DataChannel gives direct browser-to-browser delivery for live actions, a small guest-to-host clock-offset estimate, and reduced dependence on database subscription latency. The padded start and monotonic local arming reduce avoidable startup skew; they do not guarantee a fixed latency, exact clock alignment, an identical rendered frame, ordering across the database fallback, delivery after disconnect, or perfect fairness.
-- STUN-only WebRTC works on many networks but cannot traverse every symmetric NAT, carrier network, enterprise firewall, VPN, or browser privacy policy. No TURN relay is configured; those cases remain on Supabase database fallback. Add your own TURN credentials to the RTC configuration for broader connectivity.
+- STUN-only WebRTC works on many networks but cannot traverse every symmetric NAT, carrier network, enterprise firewall, VPN, or browser privacy policy. An optional authenticated TURN relay can improve this when deployed; unavailable/missing/rejected relay credentials remain on the Supabase database fallback.
 - WebRTC requires a current browser with `RTCPeerConnection` and DataChannel support. Unsupported or failed connections continue with Supabase state updates.
 - This remains **client-timed casual play**, not cheat-proof or server-authoritative timing. A client can tamper with its measured reaction, clock-ping replies, choices, or scores. Different clocks, timer throttling, rendering/compositor delays, input-device latency, network asymmetry, and fallback database delivery can still affect perceived fairness; direct peer transport does not remove those limits.
 
 ### SQL Requirement
 
-Existing users must rerun the v2.3.0 SQL block to replace the retired prior mode with `rock-paper-scissors` in room, Quick Game queue, and RPC allowlists. v3.0.3 needs no schema migration: Ghost Challenge is local-only and its record uses the existing browser profile storage.
+Existing users must rerun the SQL block above for v3.2.1 to add `target-gallery` and `memory-spark` to room, Quick Game queue, and RPC allowlists. Ghost Challenge remains local-only and needs no schema migration.
 
 ## Profile, Queues, And Authority
 
@@ -242,7 +244,7 @@ Existing users must rerun the v2.3.0 SQL block to replace the retired prior mode
 
 Multiplayer begins with an explicit **Casual** or **Ranked** choice. Casual is the existing Supabase/WebRTC implementation, so its P2P/fallback badge and the limits above remain visible. Ranked intentionally cannot queue, simulate a match, or award a ranking in this release. A real ranked deployment needs authoritative timing, verified identities, durable match records, anti-abuse controls, and an operational endpoint.
 
-`VITE_AUTHORITY_URL` is optional and must be an HTTPS URL (or localhost during development). When set, the browser can request short-lived TURN credentials from the service and otherwise keeps its visible database fallback. It is not a ranked switch. Server-side TURN secrets belong only in `server/.env`; see [`server/README.md`](server/README.md) for a Docker-compatible deployment foundation and the explicitly unfinished production requirements.
+`VITE_AUTHORITY_URL` is optional and must be an HTTPS URL (or localhost during development). It enables only optional TURN relay lookup, never ranked play. The client reads a short-lived authenticated TURN ticket from `sessionStorage["high-noon-turn-ticket"]`; a trusted identity service must issue that ticket after authenticating the player. The client sends it to `GET /v1/turn-credentials` as a bearer token, validates the credential response, and visibly falls back to STUN/Supabase when the URL, ticket, origin, response, relay, or browser support is unavailable. Do not place a TURN secret or long-lived ticket in any `VITE_` variable. See [`server/README.md`](server/README.md) for the signed-ticket protocol, exact CORS origin rules, coturn configuration, and Docker deployment.
 
 ## Validation
 
@@ -255,5 +257,5 @@ GitHub Actions in `.github/workflows/build.yml` installs and builds both the bro
 - `src/main.ts` - browser UI, AI gameplay, and multiplayer lobby wiring
 - `src/game/rules.ts` - pure versus-AI timing and duel resolution rules
 - `src/style.css` - v3.1 frontier visual system, responsive game surfaces, and mobile-safe target styling
-- `src/services/authority.ts` - optional, safe authority URL and TURN credential contract
+- `src/services/authority.ts` - optional authenticated TURN ticket and credential contract
 - `server/` - separately deployable HTTP/WebSocket and TURN credential foundation; not a production ranked system

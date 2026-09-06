@@ -1,5 +1,5 @@
 import "./style.css";
-import { aiBottleScore, aiRpsChoice, bottleMissPenalty, bottleRoundMs, bottleScore, bottleTargetMs, bottlesPerWave, createBottleSchedule, createRoundTiming, falseStart, ghostStarterTargetMs, randomBetween, randomDuelWord, resolveRps, resolveShot, rpsDecisionMs, settings } from "./game/rules";
+import { aiBottleScore, aiGalleryScore, aiMemoryScore, aiRpsChoice, bottleMissPenalty, bottleRoundMs, bottleScore, bottleTargetMs, bottlesPerWave, createBottleSchedule, createMemorySequence, createRoundTiming, falseStart, galleryRoundMs, galleryTargetMs, ghostStarterTargetMs, memoryShowMs, randomBetween, randomDuelWord, resolveRps, resolveShot, rpsDecisionMs, settings } from "./game/rules";
 import { isMuted, loadMuted, playSound, toggleMuted } from "./game/audio";
 import { aiTrailScore, createTrail, isValidTrailScore, scoreTrail, type TrailPoint } from "./game/trail";
 import { multiplayer } from "./services/multiplayer";
@@ -7,7 +7,7 @@ import { authority } from "./services/authority";
 import type { AiDifficulty, DuelResult, DirectGameMode, GameMode, LocalModeStats, MultiplayerGameMode, MultiplayerRound, PlayerProfile, Room, Round, RpsChoice } from "./types";
 
 type Page = "home" | "mode-select" | "game" | "multiplayer" | "how-to" | "profile";
-const appVersion = "3.1.3";
+const appVersion = "3.2.1";
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const mobileViewport = window.matchMedia("(max-width: 700px)");
 let page: Page = "home";
@@ -29,6 +29,8 @@ let quickMatchMode: MultiplayerGameMode = "original-quick-draw";
 let queueKind: "casual" | "ranked" = "casual";
 let quickMatchStatus: "idle" | "searching" | "matched" | "error" = "idle";
 let quickMatchNotice = "";
+let quickMatchStartedAt: number | undefined;
+let quickMatchTimer: number | undefined;
 let stopQuickMatchSubscription: (() => void) | undefined;
 let multiplayerActionBusy = false;
 let sharedStartPending = false;
@@ -39,9 +41,11 @@ let traceDrawing = false;
 let bottleScoreTotal = 0;
 let bottleHitIds = new Set<number>();
 let bottleRoundId = "";
+let galleryScoreTotal = 0;
+let memoryInput: number[] = [];
 let seriesPlayerWins = 0;
 let seriesOpponentWins = 0;
-const seriesModes: DirectGameMode[] = ["original-quick-draw", "word-duel", "trail-trace", "bottle-shot", "rock-paper-scissors"];
+const seriesModes: DirectGameMode[] = ["original-quick-draw", "word-duel", "trail-trace", "bottle-shot", "rock-paper-scissors", "target-gallery", "memory-spark"];
 loadMuted();
 
 function readStats() {
@@ -93,6 +97,8 @@ function nav(next: Page) {
     : mode === "trail-trace" ? { number: round.number, mode: "trail-trace", phase: "menu", pathSeed: 0 }
     : mode === "bottle-shot" ? { number: round.number, mode: "bottle-shot", phase: "menu", targetSeed: 0 }
     : mode === "rock-paper-scissors" ? { number: round.number, mode: "rock-paper-scissors", phase: "menu" }
+    : mode === "target-gallery" ? { number: round.number, mode: "target-gallery", phase: "menu", targetSeed: 0 }
+    : mode === "memory-spark" ? { number: round.number, mode: "memory-spark", phase: "menu", targetSeed: 0 }
     : mode === "ghost-challenge" ? { number: round.number, mode: "ghost-challenge", phase: "menu" }
     : { number: round.number, mode: "original-quick-draw", phase: "menu" };
   render();
@@ -179,6 +185,28 @@ function bottleShotView(seed: number, startAt: number | undefined, endAt: number
   return layout(`<section class="bottle-game"><div class="bottle-heading"><p class="eyebrow">${title}</p><h1>${result ?? (waiting ? "GET READY" : ended ? "TIME" : "BOTTLE SHOT")}</h1><p>${prompt}</p></div><div class="bottle-stats"><span><b>${seconds}</b> SEC</span><span><b>${score}</b> SCORE</span><span>GREEN / BLUE <b>+10</b></span><span>RED / MISS <b>-10</b></span></div><div class="bottle-range" aria-live="polite">${bottleButtons}</div><p class="trace-hint">${waiting ? "SIX TARGETS APPEAR ON THE BELL." : "TAP OR CLICK A BOTTLE ONCE. EMPTY-RANGE SHOTS COST 10. SIX TARGETS CHANGE EVERY 1.5 SECONDS."}</p>${startAt === undefined ? `<button id="shot-button" class="primary">START BOTTLE SHOT</button>` : result ? `<div class="duel-actions">${title.startsWith("LIVE") && canStartMultiplayerRound() ? `<button id="next-round" class="primary">NEXT ROUND</button>` : ""}${title.startsWith("LIVE") ? `<button id="leave-duel" class="outline">LEAVE ROOM</button>` : ""}</div>` : ""}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR SCORE</span><b>${score}</b></div><div><span>${opponentScore === undefined ? "TARGET" : "RIVAL SCORE"}</span><b>${opponentScore ?? "--"}</b></div><div><span>ROUND TIME</span><b>30 SEC</b></div><div><span>MODE</span><b>BOTTLE SHOT</b></div></section>`);
 }
 
+function targetGalleryView(seed: number, startAt: number | undefined, endAt: number | undefined, title: string, score: number, opponentScore?: number, result?: string, submitted = false) {
+  const now = Date.now();
+  const waiting = startAt !== undefined && now < startAt;
+  const ended = endAt !== undefined && now >= endAt;
+  const tick = startAt ? Math.max(0, Math.floor((now - startAt) / galleryTargetMs)) : 0;
+  const random = ((seed >>> 0) + tick * 1103515245) >>> 0;
+  const x = 14 + (random % 72);
+  const y = 18 + (Math.floor(random / 97) % 60);
+  const seconds = endAt ? Math.max(0, Math.ceil((endAt - now) / 1000)) : 20;
+  const prompt = result ? `You tagged ${score} points; ${opponentScore === undefined ? "Ash" : "your rival"} tagged ${opponentScore ?? 0}.` : waiting ? "The gallery opens on the shared bell." : ended ? (submitted ? "Score sent. Waiting for the other score." : "Time. Sending your tally.") : "Tap the moving brass target before it slips behind the dust. Each clean hit is worth 10.";
+  return layout(`<section class="gallery-game"><div class="trace-heading"><p class="eyebrow">${title}</p><h1>${result ?? (waiting ? "GET READY" : ended ? "TIME" : "TARGET GALLERY")}</h1><p>${prompt}</p></div><div class="gallery-stats"><span><b>${seconds}</b> SEC</span><span><b>${score}</b> SCORE</span><span>HIT <b>+10</b></span></div><div class="gallery-range" aria-live="polite">${!waiting && !ended && !result ? `<button id="gallery-target" class="gallery-target" style="left:${x}%;top:${y}%" aria-label="Tag moving target">+10</button>` : ""}</div><p class="trace-hint">ONE LARGE TARGET AT A TIME. TAP OR CLICK BEFORE IT MOVES.</p>${startAt === undefined ? `<button id="shot-button" class="primary">OPEN GALLERY</button>` : result ? `<div class="duel-actions">${title.startsWith("LIVE") && canStartMultiplayerRound() ? `<button id="next-round" class="primary">NEXT ROUND</button>` : ""}${title.startsWith("LIVE") ? `<button id="leave-duel" class="outline">LEAVE ROOM</button>` : ""}</div>` : ""}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR TAGS</span><b>${score}</b></div><div><span>${opponentScore === undefined ? "ASH" : "RIVAL"}</span><b>${opponentScore ?? "--"}</b></div><div><span>ROUND TIME</span><b>20 SEC</b></div><div><span>MODE</span><b>GALLERY</b></div></section>`);
+}
+
+function memorySparkView(seed: number, phase: "menu" | "showing" | "recalling" | "result", title: string, score = 0, opponentScore?: number, result?: string, live = false) {
+  const sequence = createMemorySequence(seed);
+  const visible = phase === "showing";
+  const prompt = result ? `You recalled ${score} of 4 marks; ${opponentScore === undefined ? "Ash" : "your rival"} recalled ${opponentScore ?? 0}.` : phase === "menu" ? (live ? "The shared lantern sequence will appear on the bell." : "Study four lantern flashes, then repeat the order with four large touch buttons.") : visible ? "Watch closely. The lantern order will fade shortly." : `Repeat the four flashes. Mark ${memoryInput.length + 1} of 4.`;
+  const marks = ["SUN", "STAR", "MOON", "SPUR"];
+  const controls = phase === "recalling" && !result ? marks.map((mark, index) => `<button class="memory-mark" data-memory-mark="${index}">${mark}</button>`).join("") : "";
+  return layout(`<section class="memory-game"><div class="trace-heading"><p class="eyebrow">${title}</p><h1>${result ?? (visible ? "REMEMBER" : phase === "menu" ? "MEMORY SPARK" : "RECALL")}</h1><p>${prompt}</p></div><div class="memory-sequence" aria-live="polite">${sequence.map((mark, index) => `<span class="${visible ? "is-visible" : ""}">${visible ? marks[mark] : "?"}</span>`).join("")}</div><div class="memory-controls">${controls}</div>${phase === "menu" && !live ? `<button id="shot-button" class="primary">SHOW THE MARKS</button>` : ""}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR RECALL</span><b>${score} / 4</b></div><div><span>${opponentScore === undefined ? "ASH" : "RIVAL"}</span><b>${opponentScore === undefined ? "--" : `${opponentScore} / 4`}</b></div><div><span>MODE</span><b>MEMORY SPARK</b></div><div><span>INPUT</span><b>${memoryInput.length} / 4</b></div></section>`);
+}
+
 function gameView() {
   if (multiplayerRoom?.status === "playing" && multiplayerRoom.roundState.round) return multiplayerGameView();
   if (round.mode === "rock-paper-scissors") return rpsView(round.playerChoice, round.opponentChoice, round.result, `ROCK PAPER SCISSORS · ${aiDifficulty.toUpperCase()}`, [seriesPlayerWins, seriesOpponentWins], round.decisionEndsAt, round.number, seriesPlayerWins === 3 || seriesOpponentWins === 3);
@@ -190,6 +218,14 @@ function gameView() {
   if (round.mode === "bottle-shot") {
     const result = round.result;
     return bottleShotView(round.targetSeed, round.startAt, round.endAt, `BOTTLE SHOT · ${aiDifficulty.toUpperCase()} · ROUND ${String(round.number || 1).padStart(2, "0")}`, round.playerScore ?? bottleScoreTotal, result?.opponentReactionMs, result?.outcome === "win" ? "YOU WIN" : result ? "ASH TAKES IT" : undefined);
+  }
+  if (round.mode === "target-gallery") {
+    const result = round.result;
+    return targetGalleryView(round.targetSeed, round.startAt, round.endAt, `TARGET GALLERY · ${aiDifficulty.toUpperCase()} · ROUND ${String(round.number || 1).padStart(2, "0")}`, round.playerScore ?? galleryScoreTotal, result?.opponentReactionMs, result?.outcome === "win" ? "YOU WIN" : result ? "ASH TAKES IT" : undefined);
+  }
+  if (round.mode === "memory-spark") {
+    const result = round.result;
+    return memorySparkView(round.targetSeed, round.phase, `MEMORY SPARK · ${aiDifficulty.toUpperCase()} · ROUND ${String(round.number || 1).padStart(2, "0")}`, round.playerScore, result?.opponentReactionMs, result?.outcome === "win" ? "YOU WIN" : result ? "ASH TAKES IT" : undefined);
   }
   const result = round.result;
   const phase = round.phase;
@@ -235,6 +271,15 @@ function multiplayerGameView() {
     const mineScore = mine?.score ?? bottleScoreTotal;
     return bottleShotView(shared.targetSeed!, Date.parse(shared.startAt), Date.parse(shared.endAt!), `LIVE BOTTLE SHOT · ROOM ${room.code}`, mineScore, opponent?.score, ended ? (shared.winner === "tie" ? "TIE" : won ? "YOU WIN" : "YOU LOSE") : undefined, Boolean(mine));
   }
+  if (activeMode === "target-gallery") {
+    const mineScore = mine?.score ?? galleryScoreTotal;
+    return targetGalleryView(shared.targetSeed!, Date.parse(shared.startAt), Date.parse(shared.endAt!), `LIVE TARGET GALLERY · ROOM ${room.code}`, mineScore, opponent?.score, ended ? (shared.winner === "tie" ? "TIE" : won ? "YOU WIN" : "YOU LOSE") : undefined, Boolean(mine));
+  }
+  if (activeMode === "memory-spark") {
+    const start = Date.parse(shared.startAt);
+    const localPhase = ended || mine ? "result" : Date.now() < start ? "menu" : Date.now() < start + memoryShowMs ? "showing" : "recalling";
+    return memorySparkView(shared.targetSeed!, localPhase, `LIVE MEMORY SPARK · ROOM ${room.code}`, mine?.score, opponent?.score, ended ? (shared.winner === "tie" ? "TIE" : won ? "YOU WIN" : "YOU LOSE") : undefined, true);
+  }
   if (activeMode === "trail-trace") {
     const mineScore = mine?.score;
     const opponentScore = opponent?.score;
@@ -259,7 +304,7 @@ function multiplayerGameView() {
 }
 
 function modeOptions(selected: MultiplayerGameMode) {
-  return `<option value="original-quick-draw" ${selected === "original-quick-draw" ? "selected" : ""}>QUICK DRAW</option><option value="word-duel" ${selected === "word-duel" ? "selected" : ""}>WORD DUEL</option><option value="trail-trace" ${selected === "trail-trace" ? "selected" : ""}>TRAIL TRACE</option><option value="bottle-shot" ${selected === "bottle-shot" ? "selected" : ""}>BOTTLE SHOT</option><option value="rock-paper-scissors" ${selected === "rock-paper-scissors" ? "selected" : ""}>ROCK PAPER SCISSORS</option><option value="showdown-series" ${selected === "showdown-series" ? "selected" : ""}>SHOWDOWN SERIES</option>`;
+  return `<option value="original-quick-draw" ${selected === "original-quick-draw" ? "selected" : ""}>QUICK DRAW</option><option value="word-duel" ${selected === "word-duel" ? "selected" : ""}>WORD DUEL</option><option value="trail-trace" ${selected === "trail-trace" ? "selected" : ""}>TRAIL TRACE</option><option value="bottle-shot" ${selected === "bottle-shot" ? "selected" : ""}>BOTTLE SHOT</option><option value="target-gallery" ${selected === "target-gallery" ? "selected" : ""}>TARGET GALLERY</option><option value="memory-spark" ${selected === "memory-spark" ? "selected" : ""}>MEMORY SPARK</option><option value="rock-paper-scissors" ${selected === "rock-paper-scissors" ? "selected" : ""}>ROCK PAPER SCISSORS</option><option value="showdown-series" ${selected === "showdown-series" ? "selected" : ""}>SHOWDOWN SERIES</option>`;
 }
 
 function multiplayerView() {
@@ -271,16 +316,35 @@ function multiplayerView() {
   const hostLabel = room ? (isHost ? `${escapeHtml(profile.displayName)} (HOST)` : escapeHtml(room.roundState.hostName ?? "HOST CONNECTED")) : "YOUR SEAT";
   const guestLabel = room?.guestId ? (isHost ? escapeHtml(room.roundState.guestName ?? "GUEST CONNECTED") : escapeHtml(profile.displayName)) : "OPEN SEAT";
   const transportLabel = multiplayer.transportStatus() === "connected" ? "PEER LINK CONNECTED" : multiplayer.transportStatus() === "connecting" ? "PEER LINK CONNECTING" : multiplayer.transportStatus() === "unavailable" ? "PEER LINK UNAVAILABLE: DATABASE FALLBACK" : "DATABASE FALLBACK";
+  const turnLabel = ({ "not-configured": "TURN OFF: NO AUTHORITY URL", "invalid-url": "TURN OFF: INVALID AUTHORITY URL", "ticket-required": "TURN OFF: AUTH TICKET REQUIRED", requesting: "TURN: REQUESTING RELAY", "relay-ready": "TURN: RELAY CREDENTIALS READY", "ticket-rejected": "TURN OFF: TICKET REJECTED", unavailable: "TURN OFF: AUTHORITY UNAVAILABLE", "invalid-response": "TURN OFF: INVALID AUTHORITY RESPONSE" } as const)[multiplayer.turnStatus()];
   const message = multiplayerNotice || (room ? (room.status === "ready" ? `Both gunslingers are ready. ${transportLabel}.` : room.guestId ? `Both players must ready up. ${transportLabel}.` : "Share this code with your opponent, then wait for them to join.") : "Create a private room or join your friend's code. Anonymous sign-in happens automatically.");
-  const quickMessage = quickMatchNotice || (quickMatchStatus === "searching" ? "Searching securely. Reopening this page keeps your place; we also check for a match every few seconds." : quickMatchStatus === "matched" ? "Match found. Your duel room is ready." : "Choose a mode, then search the public Quick Game queue.");
+  const searchSeconds = quickMatchStartedAt ? Math.floor((Date.now() - quickMatchStartedAt) / 1000) : 0;
+  const quickMessage = quickMatchNotice || (quickMatchStatus === "searching" ? `Searching for a ${quickMatchMode.replaceAll("-", " ")} rival. Your place is held while this screen is open.` : quickMatchStatus === "matched" ? "Match found. Your duel room is ready." : "Choose a mode, then search the public Quick Game queue.");
   const roomControls = room
     ? `<div class="lobby-controls"><button class="primary" id="ready-room" ${disabled}>${ownReady ? "NOT READY" : "READY UP"}</button><button class="outline" id="leave-room" ${disabled}>LEAVE ROOM</button></div><p class="lobby-message" aria-live="polite">${message}</p>`
-    : `<div class="queue-tabs" role="tablist"><button data-queue="casual" aria-selected="${queueKind === "casual"}">CASUAL</button><button data-queue="ranked" aria-selected="${queueKind === "ranked"}">RANKED</button></div>${queueKind === "ranked" ? `<section class="ranked-notice"><p class="eyebrow">AUTHORITATIVE PLAY</p><h2>RANKED IS NOT LIVE</h2><p>Ranked requires a deployed authority service, verified player identity, and server-timed action validation. This client has no configured competitive endpoint, so it will not place or simulate ranked matches.</p><small>Authority URL: ${authority.url ? "configured, but ranked client integration is intentionally disabled" : "not configured"}.</small></section>` : `<section class="quick-match"><p class="eyebrow">CASUAL QUICK GAME</p><div class="quick-match-controls"><label>DUEL MODE<select id="quick-match-mode" ${disabled}>${modeOptions(quickMatchMode)}</select></label><button class="primary" id="quick-game" ${quickMatchStatus === "searching" ? "disabled" : disabled}>QUICK GAME</button><button class="outline" id="cancel-search" ${quickMatchStatus === "idle" ? "disabled" : disabled}>CANCEL SEARCH</button></div><p class="quick-match-status" data-status="${quickMatchStatus}" aria-live="polite">${quickMatchStatus.toUpperCase()} · ${quickMessage}</p></section><div class="lobby-controls"><button class="primary" id="create-room" ${disabled}>CREATE ROOM</button><label>DUEL MODE<select id="room-mode" ${disabled}>${modeOptions("original-quick-draw")}</select></label></div><div class="lobby-controls"><label>ROOM CODE<input id="room-code" maxlength="6" autocomplete="off" placeholder="ABC123" ${disabled} /></label><button class="outline" id="join-room" ${disabled}>JOIN ROOM</button></div><p class="lobby-message" aria-live="polite">${message}</p>`}`;
-  return layout(`<section class="page-header"><p class="eyebrow">TWO GUNSLINGERS. ONE STREET.</p><h1>Multiplayer</h1><p>Casual uses peer-assisted rooms and visible fallback status. Ranked is reserved for an authoritative service.</p></section><section class="lobby"><div class="lobby-status">${room ? `ROOM ${room.code} · ${room.status.toUpperCase()}` : queueKind === "casual" ? "CASUAL LOBBY" : "RANKED"}</div><div class="connection-badge" data-transport="${multiplayer.transportStatus()}">${transportLabel}</div><div class="slots"><div><span>PLAYER ONE</span><b>${hostLabel}</b><small>${room?.roundState.hostReady ? "READY" : "WAITING"}</small></div><div><span>PLAYER TWO</span><b>${guestLabel}</b><small>${room?.roundState.guestReady ? "READY" : "WAITING"}</small></div></div>${roomControls}</section>`);
+    : `<div class="queue-tabs" role="tablist"><button data-queue="casual" aria-selected="${queueKind === "casual"}">CASUAL</button><button data-queue="ranked" aria-selected="${queueKind === "ranked"}">RANKED</button></div>${queueKind === "ranked" ? `<section class="ranked-notice"><p class="eyebrow">AUTHORITATIVE PLAY</p><h2>RANKED IS NOT LIVE</h2><p>Ranked requires a deployed authority service, verified player identity, and server-timed action validation. This client has no configured competitive endpoint, so it will not place or simulate ranked matches.</p><small>Authority URL: ${authority.url ? "configured, but ranked client integration is intentionally disabled" : "not configured"}.</small></section>` : `<section class="quick-match" data-searching="${quickMatchStatus === "searching"}"><div><p class="eyebrow">CASUAL QUICK GAME</p><h2>${quickMatchStatus === "searching" ? "FINDING A RIVAL" : "PICK A STREET"}</h2></div><div class="quick-match-controls"><label>DUEL MODE<select id="quick-match-mode" ${disabled || quickMatchStatus === "searching" ? "disabled" : ""}>${modeOptions(quickMatchMode)}</select></label><button class="primary" id="quick-game" ${quickMatchStatus === "searching" ? "disabled" : disabled}>${quickMatchStatus === "searching" ? "SEARCHING" : "QUICK GAME"}</button><button class="outline" id="cancel-search" ${quickMatchStatus === "idle" ? "disabled" : disabled}>CANCEL SEARCH</button></div><div class="queue-readout"><span>MODE <b>${quickMatchMode.replaceAll("-", " ").toUpperCase()}</b></span><span>SEARCH TIME <b>${String(Math.floor(searchSeconds / 60)).padStart(2, "0")}:${String(searchSeconds % 60).padStart(2, "0")}</b></span><span>LINK <b>${transportLabel.replace("PEER LINK ", "")}</b></span></div><p class="quick-match-status" data-status="${quickMatchStatus}" aria-live="polite">${quickMatchStatus.toUpperCase()} · ${quickMessage}</p></section><section class="private-room"><p class="eyebrow">PRIVATE ROOM</p><p>Keep it practical: create a code for a friend, or join theirs.</p><div class="lobby-controls"><button class="primary" id="create-room" ${disabled}>CREATE ROOM</button><label>DUEL MODE<select id="room-mode" ${disabled}>${modeOptions("original-quick-draw")}</select></label></div><div class="lobby-controls"><label>ROOM CODE<input id="room-code" maxlength="6" autocomplete="off" placeholder="ABC123" ${disabled} /></label><button class="outline" id="join-room" ${disabled}>JOIN ROOM</button></div></section><p class="lobby-message" aria-live="polite">${message}</p>`}`;
+  return layout(`<section class="page-header"><p class="eyebrow">TWO GUNSLINGERS. ONE STREET.</p><h1>Multiplayer</h1><p>Casual uses peer-assisted rooms and visible fallback status. Ranked is reserved for an authoritative service.</p></section><section class="lobby"><div class="lobby-status">${room ? `ROOM ${room.code} · ${room.status.toUpperCase()}` : queueKind === "casual" ? "CASUAL LOBBY" : "RANKED"}</div><div class="connection-badge" data-transport="${multiplayer.transportStatus()}">${transportLabel}</div><div class="authority-badge" data-turn-status="${multiplayer.turnStatus()}">${turnLabel}</div><p class="authority-note">TURN is optional for Casual connectivity. Without a valid short-lived ticket, this game uses STUN and the Supabase database fallback. Ranked is not enabled.</p><div class="slots"><div><span>PLAYER ONE</span><b>${hostLabel}</b><small>${room?.roundState.hostReady ? "READY" : "WAITING"}</small></div><div><span>PLAYER TWO</span><b>${guestLabel}</b><small>${room?.roundState.guestReady ? "READY" : "WAITING"}</small></div></div>${roomControls}</section>`);
 }
 
 function howToView() {
   return layout(`<section class="page-header"><p class="eyebrow">KNOW THE RULES</p><h1>How to Play</h1><p>Three original versus-AI duels, plus their shared-path multiplayer counterparts.</p></section><section class="rules"><article><b>01</b><h2>Original Quick Draw</h2><p>After <strong>DRAW!</strong>, click, tap, or press Space once to shoot. Your reaction time races Ash's.</p></article><article><b>02</b><h2>Word Duel</h2><p>After a random wait, type the displayed <strong>SHOOT</strong>, <strong>DRAW</strong>, or <strong>POW</strong> exactly and press Enter.</p></article><article><b>03</b><h2>Trail Trace</h2><p>Press and hold on the left marker, follow the glowing path, then release. Score blends how far you travel and how closely you stay on line.</p></article></section>`);
+}
+
+function resultPanel() {
+  const shared = multiplayerRoom?.status === "playing" ? multiplayerRoom.roundState.round : undefined;
+  const isHost = multiplayerRoom?.hostId === multiplayerUserId;
+  const winner = shared?.winner;
+  const outcome = winner ? winner === "tie" ? "tie" : winner === (isHost ? "host" : "guest") ? "win" : "loss" : round.result?.outcome;
+  if (!outcome) return "";
+  const result = round.result;
+  const mine = shared ? (isHost ? shared.hostAction : shared.guestAction) : undefined;
+  const rival = shared ? (isHost ? shared.guestAction : shared.hostAction) : undefined;
+  const mineScore = mine?.score ?? result?.reactionMs;
+  const rivalScore = rival?.score ?? result?.opponentReactionMs;
+  const modeName = (shared?.gameMode ?? (shared ? multiplayerRoom!.mode : round.mode)).replaceAll("-", " ").toUpperCase();
+  const next = shared ? (canStartMultiplayerRound() && !shared.matchWinner ? `<button id="result-next" class="primary">NEXT ROUND</button>` : "") : `<button id="result-rematch" class="primary">REMATCH</button>`;
+  const returnAction = shared ? `<button id="result-return" class="outline">RETURN TO LOBBY</button>` : `<button id="result-return" class="outline">CHOOSE ANOTHER MODE</button>`;
+  return `<section class="result-panel" data-outcome="${outcome}"><p class="eyebrow">ROUND REPORT · ${modeName}</p><h2>${outcome === "win" ? "YOUR STORY GROWS" : outcome === "loss" ? "THE DUST SETTLES" : "HONORS EVEN"}</h2><p>${shared ? (outcome === "tie" ? "Neither side takes this round." : outcome === "win" ? "You take the round." : "Your rival takes the round.") : result?.message}</p><div class="result-metrics"><span>YOU <b>${mineScore === undefined ? "--" : `${mineScore}${typeof mineScore === "number" && (round.mode === "original-quick-draw" || round.mode === "word-duel" || round.mode === "ghost-challenge") ? " MS" : ""}`}</b></span><span>RIVAL <b>${rivalScore === undefined ? "--" : rivalScore}</b></span><span>STREAK <b>${profile.winStreak}</b></span><span>PROFILE <b>${profile.title}</b></span></div><div class="duel-actions">${next}${returnAction}</div></section>`;
 }
 
 function render() {
@@ -292,24 +356,29 @@ function render() {
     const rival = shared ? hostView ? shared.seriesGuestWins ?? 0 : shared.seriesHostWins ?? 0 : seriesOpponentWins;
     root.querySelector(".scoreboard")?.insertAdjacentHTML("afterbegin", `<div><span>SHOWDOWN SERIES</span><b>${mine} - ${rival} / FIRST TO 3</b></div>`);
   }
+  if (page === "game") root.querySelector(".scoreboard")?.insertAdjacentHTML("afterend", resultPanel());
   if (page === "mode-select") {
     root.querySelector(".mode-cards")?.insertAdjacentHTML("beforeend", `<article${mode === "bottle-shot" ? " data-selected=\"true\"" : ""}><p class="eyebrow">MODE 04</p><h2>Bottle Shot</h2><p>Thirty seconds of six-bottle waves. Green and blue add points; red bottles and empty-range shots subtract them.</p><button class="outline" data-mode="bottle-shot">${mode === "bottle-shot" ? "SELECTED" : "SELECT BOTTLE SHOT"}</button></article>`);
     root.querySelector(".mode-cards")?.insertAdjacentHTML("beforeend", `<article${mode === "rock-paper-scissors" ? " data-selected=\"true\"" : ""}><p class="eyebrow">MODE 05</p><h2>Rock Paper Scissors</h2><p>A simultaneous best-of-five showdown. First gunslinger to three round wins takes the match.</p><button class="outline" data-mode="rock-paper-scissors">${mode === "rock-paper-scissors" ? "SELECTED" : "SELECT ROCK PAPER SCISSORS"}</button></article>`);
     root.querySelector(".mode-cards")?.insertAdjacentHTML("beforeend", `<article class="ghost-card"${mode === "ghost-challenge" ? " data-selected=\"true\"" : ""}><p class="eyebrow">MODE 06 · AI ONLY</p><h2>Beat Your Best</h2><p>Ghost Challenge races your saved personal-best reaction. No record yet? Beat the clearly marked ${ghostStarterTargetMs} MS starter target to set one.</p><button class="outline" data-mode="ghost-challenge">${mode === "ghost-challenge" ? "SELECTED" : "CHALLENGE YOUR GHOST"}</button></article>`);
+    root.querySelector(".mode-cards")?.insertAdjacentHTML("beforeend", `<article${mode === "target-gallery" ? " data-selected=\"true\"" : ""}><p class="eyebrow">MODE 07</p><h2>Target Gallery</h2><p>Tag one moving brass target at a time in a fast, touch-friendly 20-second range.</p><button class="outline" data-mode="target-gallery">${mode === "target-gallery" ? "SELECTED" : "SELECT TARGET GALLERY"}</button></article><article${mode === "memory-spark" ? " data-selected=\"true\"" : ""}><p class="eyebrow">MODE 08</p><h2>Memory Spark</h2><p>Study four lantern marks, then repeat their order with large, mobile-friendly choices.</p><button class="outline" data-mode="memory-spark">${mode === "memory-spark" ? "SELECTED" : "SELECT MEMORY SPARK"}</button></article>`);
     const difficultyNote = root.querySelector(".difficulty-select > p:not(.eyebrow)");
-    if (difficultyNote) difficultyNote.textContent = "Trail Trace and Bottle Shot change Ash's simulated score; Quick Draw and Word Duel change reaction time. Ghost Challenge always uses your saved best.";
+    if (difficultyNote) difficultyNote.textContent = "Trail Trace, Bottle Shot, Target Gallery, and Memory Spark change Ash's simulated score; Quick Draw and Word Duel change reaction time. Ghost Challenge always uses your saved best.";
   }
   if (page === "how-to") {
     const intro = root.querySelector(".page-header > p:last-child");
-    if (intro) intro.textContent = "Six original versus-AI duels, including one personal Ghost Challenge, plus shared multiplayer counterparts.";
+    if (intro) intro.textContent = "Eight original versus-AI duels, including one personal Ghost Challenge, plus shared multiplayer counterparts.";
     root.querySelector(".rules")?.insertAdjacentHTML("beforeend", `<article><b>04</b><h2>Bottle Shot</h2><p>For 30 seconds, six bottles appear every 1.5 seconds. Green and blue are <strong>+10</strong>; red bottles and shots that miss an active bottle are <strong>-10</strong>.</p></article>`);
     root.querySelector(".rules")?.insertAdjacentHTML("beforeend", `<article><b>05</b><h2>Rock Paper Scissors</h2><p>Choose simultaneously. Rock beats Scissors, Scissors beats Paper, and Paper beats Rock. First to three round wins takes the match.</p></article>`);
     root.querySelector(".rules")?.insertAdjacentHTML("beforeend", `<article class="ghost-card"><b>06</b><h2>Beat Your Best / Ghost Challenge</h2><p>Wait for <strong>DRAW!</strong>, then shoot once. Your target is your saved fastest Ghost reaction; beat it to win and set a new record. Before your first win, beat the labeled <strong>${ghostStarterTargetMs} MS STARTER TARGET</strong>, which becomes your record after success. Early shots are false starts.</p></article>`);
+    root.querySelector(".rules")?.insertAdjacentHTML("beforeend", `<article><b>07</b><h2>Target Gallery</h2><p>Tap the one moving brass target before it changes position. Each hit is <strong>+10</strong>; the 20-second round rewards steady mobile taps.</p></article><article><b>08</b><h2>Memory Spark</h2><p>Study the four lantern marks, then tap the same order. Each correctly recalled position scores one point.</p></article>`);
   }
   root.querySelectorAll<HTMLElement>("[data-page]").forEach(button => button.addEventListener("click", () => nav(button.dataset.page as Page)));
   root.querySelectorAll<HTMLElement>("[data-mode]").forEach(button => button.addEventListener("click", () => { mode = button.dataset.mode as GameMode; render(); }));
   root.querySelector("#sound-toggle")?.addEventListener("click", () => { toggleMuted(); render(); });
   root.querySelectorAll<HTMLButtonElement>("[data-rps-choice]").forEach(button => button.addEventListener("click", () => chooseRps(button.dataset.rpsChoice as RpsChoice)));
+  root.querySelector("#gallery-target")?.addEventListener("click", hitGalleryTarget);
+  root.querySelectorAll<HTMLButtonElement>("[data-memory-mark]").forEach(button => button.addEventListener("click", () => chooseMemoryMark(Number(button.dataset.memoryMark))));
   root.querySelectorAll<HTMLElement>("[data-ai-difficulty]").forEach(button => button.addEventListener("click", () => { aiDifficulty = button.dataset.aiDifficulty as AiDifficulty; render(); }));
   root.querySelector("#start-ai-duel")?.addEventListener("click", () => nav("game"));
   root.querySelector("#shot-button")?.addEventListener("click", () => takeAction(!mobileQuickDrawWaiting()));
@@ -324,6 +393,9 @@ function render() {
   root.querySelector("#leave-room")?.addEventListener("click", () => void leaveRoom());
   root.querySelector("#leave-duel")?.addEventListener("click", () => void leaveRoom());
   root.querySelector("#next-round")?.addEventListener("click", () => void startMultiplayerRound());
+  root.querySelector("#result-next")?.addEventListener("click", () => void startMultiplayerRound());
+  root.querySelector("#result-rematch")?.addEventListener("click", beginRound);
+  root.querySelector("#result-return")?.addEventListener("click", () => multiplayerRoom?.status === "playing" ? void leaveRoom() : nav("mode-select"));
   root.querySelector("#quick-game")?.addEventListener("click", () => void startQuickMatch());
   root.querySelector("#cancel-search")?.addEventListener("click", () => void cancelQuickMatch());
   root.querySelectorAll<HTMLButtonElement>("[data-queue]").forEach(button => button.addEventListener("click", () => { queueKind = button.dataset.queue as "casual" | "ranked"; render(); }));
@@ -449,6 +521,8 @@ function resetMultiplayerState() {
   sharedStartPending = false;
   multiplayerSignal = undefined;
   quickMatchStatus = "idle";
+  quickMatchStartedAt = undefined;
+  window.clearInterval(quickMatchTimer);
   quickMatchNotice = "";
 }
 function leaveRoom() {
@@ -466,6 +540,8 @@ function leaveRoom() {
 function acceptQuickMatch(nextRoom: Room) {
   multiplayerRoom = nextRoom;
   quickMatchStatus = "matched";
+  quickMatchStartedAt = undefined;
+  window.clearInterval(quickMatchTimer);
   quickMatchNotice = `Matched in room ${nextRoom.code}. Ready up when you are set.`;
   stopQuickMatchSubscription?.();
   stopQuickMatchSubscription = undefined;
@@ -480,6 +556,7 @@ async function restoreQuickMatch() {
     quickMatchMode = restored.mode as MultiplayerGameMode;
     if (restored.room) { acceptQuickMatch(restored.room); if (page === "multiplayer") render(); return; }
     quickMatchStatus = "searching";
+    quickMatchStartedAt ??= Date.now();
     quickMatchNotice = "Search restored. Looking for a gunslinger in your selected mode...";
     if (!stopQuickMatchSubscription) {
       stopQuickMatchSubscription = multiplayer.subscribeToQuickMatch(acceptQuickMatch, message => {
@@ -498,7 +575,9 @@ function startQuickMatch() {
   return roomAction(async () => {
     try {
       multiplayerUserId = await multiplayer.authenticate();
-      quickMatchStatus = "searching"; quickMatchNotice = "";
+      quickMatchStatus = "searching"; quickMatchStartedAt = Date.now(); quickMatchNotice = "";
+      window.clearInterval(quickMatchTimer);
+      quickMatchTimer = window.setInterval(() => { if (page === "multiplayer" && quickMatchStatus === "searching") render(); }, 1_000);
       stopQuickMatchSubscription?.();
       stopQuickMatchSubscription = multiplayer.subscribeToQuickMatch(nextRoom => { acceptQuickMatch(nextRoom); if (page === "multiplayer") render(); }, message => { quickMatchStatus = "error"; quickMatchNotice = message; if (page === "multiplayer") render(); });
       const nextRoom = await multiplayer.requestQuickMatch(quickMatchMode);
@@ -514,7 +593,7 @@ function cancelQuickMatch() {
     const nextRoom = await multiplayer.cancelQuickMatch();
     stopQuickMatchSubscription?.(); stopQuickMatchSubscription = undefined;
     if (nextRoom) acceptQuickMatch(nextRoom);
-    else { quickMatchStatus = "idle"; quickMatchNotice = "Search cancelled."; }
+    else { quickMatchStatus = "idle"; quickMatchStartedAt = undefined; window.clearInterval(quickMatchTimer); quickMatchNotice = "Search cancelled."; }
   });
 }
 
@@ -540,14 +619,16 @@ async function startMultiplayerRound() {
     while (multiplayer.transportStatus() === "connecting" && Date.now() < settleUntil) await sleep(100);
     const gameMode: DirectGameMode = room.mode === "showdown-series" ? seriesModes[Math.floor(Math.random() * seriesModes.length)]! : room.mode as DirectGameMode;
     const transportPadMs = multiplayer.transportStatus() === "connected" ? 3_000 : 4_500;
-    const startAt = new Date(Date.now() + (gameMode === "trail-trace" ? transportPadMs : gameMode === "bottle-shot" || gameMode === "rock-paper-scissors" ? transportPadMs : transportPadMs + randomBetween(settings.minWaitMs, settings.maxWaitMs))).toISOString();
+    const startAt = new Date(Date.now() + (gameMode === "trail-trace" ? transportPadMs : gameMode === "bottle-shot" || gameMode === "target-gallery" || gameMode === "memory-spark" || gameMode === "rock-paper-scissors" ? transportPadMs : transportPadMs + randomBetween(settings.minWaitMs, settings.maxWaitMs))).toISOString();
     const shared: MultiplayerRound = {
       id: crypto.randomUUID(),
       startAt,
       ...(room.mode === "showdown-series" || gameMode === "rock-paper-scissors" ? { ...(room.mode === "showdown-series" ? { gameMode } : {}), seriesHostWins: room.roundState.round?.seriesHostWins ?? 0, seriesGuestWins: room.roundState.round?.seriesGuestWins ?? 0, seriesRound: (room.roundState.round?.seriesRound ?? 0) + 1 } : {}),
       ...(gameMode === "word-duel" ? { word: randomDuelWord() } : {}),
       ...(gameMode === "trail-trace" ? { pathSeed: crypto.getRandomValues(new Uint32Array(1))[0]! } : {}),
-      ...(gameMode === "bottle-shot" ? { targetSeed: crypto.getRandomValues(new Uint32Array(1))[0]!, endAt: new Date(Date.parse(startAt) + bottleRoundMs).toISOString() } : {}),
+       ...(gameMode === "bottle-shot" ? { targetSeed: crypto.getRandomValues(new Uint32Array(1))[0]!, endAt: new Date(Date.parse(startAt) + bottleRoundMs).toISOString() } : {}),
+       ...(gameMode === "target-gallery" ? { targetSeed: crypto.getRandomValues(new Uint32Array(1))[0]!, endAt: new Date(Date.parse(startAt) + galleryRoundMs).toISOString() } : {}),
+       ...(gameMode === "memory-spark" ? { targetSeed: crypto.getRandomValues(new Uint32Array(1))[0]! } : {}),
       ...(gameMode === "rock-paper-scissors" ? { decisionEndsAt: new Date(Date.parse(startAt) + rpsDecisionMs).toISOString() } : {}),
     };
     const nextRoom = await multiplayer.startRound(shared);
@@ -591,6 +672,26 @@ function syncMultiplayerRound(shared: MultiplayerRound) {
       drawTimer = window.setTimeout(refresh, 250);
     };
     drawTimer = window.setTimeout(refresh, Math.max(0, Date.parse(shared.startAt) - Date.now()));
+    return;
+  }
+  if ((shared.gameMode ?? multiplayerRoom?.mode) === "target-gallery" && shared.endAt) {
+    if (bottleRoundId !== shared.id) { bottleRoundId = shared.id; galleryScoreTotal = 0; }
+    const refresh = () => {
+      if (page === "game" && !shared.winner) render();
+      if (Date.now() >= Date.parse(shared.endAt!)) { void submitGalleryScore(); return; }
+      drawTimer = window.setTimeout(refresh, 180);
+    };
+    drawTimer = window.setTimeout(refresh, Math.max(0, Date.parse(shared.startAt) - Date.now()));
+    return;
+  }
+  if ((shared.gameMode ?? multiplayerRoom?.mode) === "memory-spark") {
+    memoryInput = [];
+    const startAt = Date.parse(shared.startAt);
+    const revealAt = Date.parse(shared.startAt) + memoryShowMs;
+    drawTimer = window.setTimeout(() => {
+      if (page === "game") render();
+      drawTimer = window.setTimeout(() => { if (page === "game") render(); }, Math.max(0, revealAt - Date.now()));
+    }, Math.max(0, startAt - Date.now()));
     return;
   }
   // Room action updates must not restart an already rendered reaction clock.
@@ -736,6 +837,50 @@ async function submitBottleScore() {
   finally { multiplayerActionBusy = false; if (page === "game") render(); }
 }
 
+function hitGalleryTarget() {
+  const live = multiplayerRoom?.status === "playing";
+  const endAt = live ? Date.parse(multiplayerRoom!.roundState.round!.endAt!) : round.mode === "target-gallery" ? round.endAt! : 0;
+  if (Date.now() >= endAt) return;
+  galleryScoreTotal += 10;
+  if (!live && round.mode === "target-gallery") round = { ...round, playerScore: galleryScoreTotal };
+  playSound("bottle");
+  render();
+}
+
+async function submitGalleryScore() {
+  const room = multiplayerRoom; const shared = room?.roundState.round;
+  if (!room || !shared || multiplayerActionBusy || shared.winner || !shared.endAt || Date.now() < Date.parse(shared.endAt)) return;
+  const isHost = room.hostId === multiplayerUserId;
+  if (isHost ? shared.hostAction : shared.guestAction) return;
+  multiplayerActionBusy = true;
+  try { multiplayerRoom = await multiplayer.submitRoundAction(shared.id, 0, false, { score: galleryScoreTotal }); if (isHost) await resolveMultiplayerRound(shared.id); }
+  catch (error) { multiplayerNotice = error instanceof Error ? error.message : "Unable to submit your gallery score."; }
+  finally { multiplayerActionBusy = false; if (page === "game") render(); }
+}
+
+function chooseMemoryMark(mark: number) {
+  const live = multiplayerRoom?.status === "playing";
+  const seed = live ? multiplayerRoom!.roundState.round!.targetSeed! : round.mode === "memory-spark" ? round.targetSeed : 0;
+  const sharedStart = live ? Date.parse(multiplayerRoom!.roundState.round!.startAt) : 0;
+  if ((live && Date.now() < sharedStart + memoryShowMs) || (!live && (round.mode !== "memory-spark" || round.phase !== "recalling"))) return;
+  memoryInput.push(mark);
+  playSound("click");
+  if (memoryInput.length < 4) { render(); return; }
+  const score = memoryInput.reduce((total, value, index) => total + (value === createMemorySequence(seed)[index] ? 1 : 0), 0);
+  if (live) void submitMemoryScore(score);
+  else finishMemoryRound(score);
+}
+
+async function submitMemoryScore(score: number) {
+  const room = multiplayerRoom; const shared = room?.roundState.round;
+  if (!room || !shared || multiplayerActionBusy || shared.winner) return;
+  const isHost = room.hostId === multiplayerUserId;
+  multiplayerActionBusy = true;
+  try { multiplayerRoom = await multiplayer.submitRoundAction(shared.id, 0, false, { score }); if (isHost) await resolveMultiplayerRound(shared.id); }
+  catch (error) { multiplayerNotice = error instanceof Error ? error.message : "Unable to submit your recall."; }
+  finally { multiplayerActionBusy = false; render(); }
+}
+
 function beginRound() {
   tracePoints = [];
   if ((mode === "showdown-series" || mode === "rock-paper-scissors") && (seriesPlayerWins === 3 || seriesOpponentWins === 3)) {
@@ -764,6 +909,22 @@ function beginRound() {
     };
     render(); drawTimer = window.setTimeout(refresh, 250);
     return;
+  }
+  if (selectedMode === "target-gallery") {
+    const startAt = Date.now();
+    galleryScoreTotal = 0;
+    round = { number: round.number + 1, mode: "target-gallery", phase: "playing", targetSeed: crypto.getRandomValues(new Uint32Array(1))[0]!, startAt, endAt: startAt + galleryRoundMs, playerScore: 0 };
+    const refresh = () => {
+      if (round.mode !== "target-gallery" || round.phase !== "playing") return;
+      if (Date.now() >= round.endAt!) { finishGalleryRound(); return; }
+      render(); drawTimer = window.setTimeout(refresh, 180);
+    };
+    render(); drawTimer = window.setTimeout(refresh, 180); return;
+  }
+  if (selectedMode === "memory-spark") {
+    memoryInput = [];
+    round = { number: round.number + 1, mode: "memory-spark", phase: "showing", targetSeed: crypto.getRandomValues(new Uint32Array(1))[0]! };
+    render(); drawTimer = window.setTimeout(() => { if (round.mode === "memory-spark") { round = { ...round, phase: "recalling" }; render(); } }, memoryShowMs); return;
   }
   if (selectedMode === "trail-trace") {
     round = { number: round.number + 1, mode: "trail-trace", phase: "tracing", pathSeed: crypto.getRandomValues(new Uint32Array(1))[0]! };
@@ -831,6 +992,24 @@ function finishBottleRound() {
   round = { ...round, phase: "result", playerScore: bottleScoreTotal, result: { outcome: won ? "win" : "loss", opponentReactionMs: opponentScore, message: won ? "You cleared the range." : "Ash cleared more bottles." } };
   playSound(won ? "win" : "loss");
   render();
+}
+function finishGalleryRound() {
+  if (round.mode !== "target-gallery") return;
+  const opponentScore = aiGalleryScore(aiDifficulty);
+  const won = galleryScoreTotal >= opponentScore;
+  recordResult("target-gallery", won ? "win" : "loss");
+  if (mode === "showdown-series") { if (won) seriesPlayerWins++; else seriesOpponentWins++; }
+  round = { ...round, phase: "result", playerScore: galleryScoreTotal, result: { outcome: won ? "win" : "loss", opponentReactionMs: opponentScore, message: won ? "You kept the gallery ringing." : "Ash found more brass." } };
+  playSound(won ? "win" : "loss"); render();
+}
+function finishMemoryRound(score: number) {
+  if (round.mode !== "memory-spark") return;
+  const opponentScore = aiMemoryScore(aiDifficulty);
+  const won = score >= opponentScore;
+  recordResult("memory-spark", won ? "win" : "loss");
+  if (mode === "showdown-series") { if (won) seriesPlayerWins++; else seriesOpponentWins++; }
+  round = { ...round, phase: "result", playerScore: score, result: { outcome: won ? "win" : "loss", opponentReactionMs: opponentScore, message: won ? "You held the lantern order." : "Ash recalled more marks." } };
+  playSound(won ? "win" : "loss"); render();
 }
 function takeAction(allowFalseStart = false) {
   playSound("click");

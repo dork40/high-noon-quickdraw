@@ -1,7 +1,7 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from "@supabase/supabase-js";
 import type { MultiplayerGameMode, MultiplayerRound, QuickMatchQueueEntry, Room, RoomRoundState, RoomStatus, RpsChoice } from "../types";
 import { minimumTrailAccuracy, minimumTrailProgress } from "../game/trail";
-import { fetchTurnCredentials } from "./authority";
+import { authority, fetchTurnCredentials } from "./authority";
 
 type RoomRow = {
   code: string;
@@ -41,6 +41,7 @@ export interface MultiplayerService {
   sendLiveAction(event: { roundId: string; reactionMs: number; falseStart: boolean; payload?: Partial<{ score: number; progress: number; accuracy: number; reachedEnd: boolean; choice: RpsChoice }> }): boolean;
   onLiveEvent(listener: (event: { roundId: string }) => void): () => void;
   transportStatus(): "connecting" | "connected" | "fallback" | "unavailable";
+  turnStatus(): typeof authority.turnStatus;
   localStartAt(hostStartAt: string): number;
 }
 
@@ -391,11 +392,11 @@ export const multiplayer: MultiplayerService = {
     const hinted = peerActions.get(roundId);
     const hostAction = host ?? hinted?.hostAction;
     const guestAction = guest ?? hinted?.guestAction;
-    if ((gameMode === "trail-trace" || gameMode === "bottle-shot" || gameMode === "rock-paper-scissors") && (!hostAction || !guestAction)) return room;
+    if ((gameMode === "trail-trace" || gameMode === "bottle-shot" || gameMode === "target-gallery" || gameMode === "memory-spark" || gameMode === "rock-paper-scissors") && (!hostAction || !guestAction)) return room;
     const reactionRace = gameMode === "original-quick-draw" || gameMode === "word-duel";
     if (reactionRace && (!hostAction || !guestAction) && !allowSingleReaction) return room;
     const tieToleranceMs = 3;
-    const winner = gameMode === "trail-trace" || gameMode === "bottle-shot"
+    const winner = gameMode === "trail-trace" || gameMode === "bottle-shot" || gameMode === "target-gallery" || gameMode === "memory-spark"
       ? (hostAction!.score ?? 0) === (guestAction!.score ?? 0) ? "tie" : (hostAction!.score ?? 0) > (guestAction!.score ?? 0) ? "host" : "guest"
       : gameMode === "rock-paper-scissors"
         ? resolveRpsWinner(hostAction!.choice!, guestAction!.choice!)
@@ -415,6 +416,7 @@ export const multiplayer: MultiplayerService = {
   sendLiveAction(event) { if (transport !== "connected" || !dataChannel) return false; try { dataChannel.send(JSON.stringify({ type: "action", event })); return true; } catch { transport = "fallback"; return false; } },
   onLiveEvent(listener) { liveListener = listener; return () => { if (liveListener === listener) liveListener = undefined; }; },
   transportStatus: () => transport,
+  turnStatus: () => authority.turnStatus,
   localStartAt: hostStartAt => Date.parse(hostStartAt) - (room?.guestId === localUserId ? hostClockOffsetMs : 0),
 };
 
