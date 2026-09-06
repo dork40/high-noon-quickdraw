@@ -1,6 +1,6 @@
 # High Noon Showdown
 
-High Noon Showdown v3.3.0 is an original Wild West browser game with local player progression, synthesized Web Audio effects, an AI-only Ghost Challenge personal-best race, optional authenticated TURN relay support, and clearly labeled casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
+High Noon Showdown v3.3.1 is an original Wild West browser game with local player progression, synthesized Web Audio effects, an AI-only Ghost Challenge personal-best race, optional authenticated TURN relay support, and clearly labeled casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
 
 ## v3.1.0 Visual Refresh
 
@@ -236,7 +236,7 @@ For Trail Trace, the deterministic path is scored locally and a submission is ac
 
 ### SQL Requirement
 
-Existing users who have not applied the v3.2.2 SQL block must rerun it. v3.3.0 adds no schema migration: Series presentation uses the existing shared round, score, and next-round-controller fields. Ghost Challenge remains local-only.
+Existing users who have not applied the v3.2.2 SQL block must rerun it. v3.3.1 adds no schema migration: Series presentation uses the existing shared round, score, and next-round-controller fields. Ghost Challenge remains local-only.
 
 ## Profile, Queues, And Authority
 

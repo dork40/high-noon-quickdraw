@@ -36,6 +36,7 @@ export interface MultiplayerService {
   cancelQuickMatch(): Promise<Room | null>;
   subscribeToQuickMatch(onMatch: (room: Room) => void, onError: (message: string) => void): () => void;
   startRound(round: MultiplayerRound): Promise<Room>;
+  restartSeries(): Promise<Room>;
   submitRoundAction(roundId: string, reactionMs: number, falseStart: boolean, payload?: Partial<{ score: number; progress: number; accuracy: number; reachedEnd: boolean; choice: RpsChoice }>): Promise<Room>;
   resolveRound(roundId: string, allowSingleReaction?: boolean): Promise<Room>;
   sendLiveAction(event: { roundId: string; reactionMs: number; falseStart: boolean; payload?: Partial<{ score: number; progress: number; accuracy: number; reachedEnd: boolean; choice: RpsChoice }> }): boolean;

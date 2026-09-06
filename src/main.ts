@@ -7,7 +7,7 @@ import { authority } from "./services/authority";
 import type { AiDifficulty, DuelResult, DirectGameMode, GameMode, LocalModeStats, MultiplayerGameMode, MultiplayerRound, PlayerProfile, Room, Round, RpsChoice } from "./types";
 
 type Page = "home" | "mode-select" | "game" | "multiplayer" | "how-to" | "profile";
-const appVersion = "3.3.0";
+const appVersion = "3.3.1";
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const mobileViewport = window.matchMedia("(max-width: 700px)");
 let page: Page = "home";
@@ -345,7 +345,8 @@ function render() {
     const hostView = multiplayerRoom?.hostId === multiplayerUserId;
     const mine = shared ? hostView ? shared.seriesHostWins ?? 0 : shared.seriesGuestWins ?? 0 : seriesPlayerWins;
     const rival = shared ? hostView ? shared.seriesGuestWins ?? 0 : shared.seriesHostWins ?? 0 : seriesOpponentWins;
-    const gameMode = shared?.gameMode ?? (round.mode === "original-quick-draw" ? seriesNextMode : round.mode);
+    const fallbackMode: DirectGameMode | undefined = round.mode === "word-duel" || round.mode === "trail-trace" || round.mode === "bottle-shot" || round.mode === "rock-paper-scissors" ? round.mode : undefined;
+    const gameMode = shared?.gameMode ?? (round.mode === "original-quick-draw" ? seriesNextMode : fallbackMode);
     if (gameMode && !seriesPresentation && !((mine === 3 || rival === 3))) root.querySelector(".masthead")?.insertAdjacentHTML("afterend", seriesHud(gameMode, mine, rival, shared?.seriesRound ?? round.number, shared?.startAt ? Math.max(0, Math.ceil((Date.parse(shared.startAt) - Date.now()) / 1000)) : undefined, multiplayerRoom ? seriesControllerLabel(multiplayerRoom) : "ASH DEALS THE NEXT TEST"));
     root.querySelector(".scoreboard")?.insertAdjacentHTML("afterbegin", `<div><span>SHOWDOWN SERIES</span><b>${mine} - ${rival} / FIRST TO 3</b></div>`);
   }
