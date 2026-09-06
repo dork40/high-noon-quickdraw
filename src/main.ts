@@ -7,7 +7,7 @@ import { authority } from "./services/authority";
 import type { AiDifficulty, DuelResult, DirectGameMode, GameMode, LocalModeStats, MultiplayerGameMode, MultiplayerRound, PlayerProfile, Room, Round, RpsChoice } from "./types";
 
 type Page = "home" | "mode-select" | "game" | "multiplayer" | "how-to" | "profile";
-const appVersion = "3.1.2";
+const appVersion = "3.1.3";
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const mobileViewport = window.matchMedia("(max-width: 700px)");
 let page: Page = "home";
@@ -144,7 +144,7 @@ function toggleFullscreen() {
 }
 
 function homeView() {
-  return layout(`<section class="hero"><div class="sun"></div><div class="mesa mesa-far"></div><div class="mesa mesa-near"></div><div class="dust"></div><div class="hero-copy"><p class="eyebrow">A QUICK-DRAW DUEL AT SUNSET</p><h1>HIGH NOON<br><i>SHOWDOWN</i></h1><p class="lead">Face Ash in reflex, precision, nerve, or a best-of-five showdown.</p><div class="hero-actions"><div class="hero-primary-actions"><button class="primary" data-page="mode-select">PLAY VS AI</button><button class="primary" data-page="multiplayer">MULTIPLAYER</button></div><button class="outline hero-how-to" data-page="how-to">HOW TO PLAY</button></div></div><p class="corner-note">NO EXTERNAL ASSETS<br>ORIGINAL FRONTIER TALE</p></section>
+  return layout(`<section class="hero"><div class="sun"></div><div class="mesa mesa-far"></div><div class="mesa mesa-near"></div><div class="dust"></div><div class="hero-copy"><p class="eyebrow">A QUICK-DRAW DUEL AT SUNSET</p><h1>HIGH NOON<br><i>SHOWDOWN</i></h1><div class="hero-actions"><div class="hero-primary-actions"><button class="primary" data-page="mode-select">PLAY VS AI</button><button class="primary" data-page="multiplayer">MULTIPLAYER</button></div><button class="outline hero-how-to" data-page="how-to">HOW TO PLAY</button></div></div><p class="corner-note">NO EXTERNAL ASSETS<br>ORIGINAL FRONTIER TALE</p></section>
   <section class="home-cards home-dispatch"><article><p class="eyebrow">THE BOARD</p><h2>Pick your test.</h2><p>Draw fast, type under pressure, trace a trail, break bottles, or settle it with Rock Paper Scissors.</p><button class="text-button" data-page="mode-select">VIEW AI MODES</button></article><article><p class="eyebrow">THE STREET</p><h2>Face a real rival.</h2><p>Use a private room for friends or enter Casual Quick Game to find another gunslinger.</p><button class="text-button" data-page="multiplayer">ENTER MULTIPLAYER</button></article><article><p class="eyebrow">YOUR LEGEND</p><h2>${profile.title}</h2><p>Build streaks, earn badges, and challenge the Ghost with the best draw this browser has recorded.</p><button class="text-button" data-page="profile">VIEW PROFILE</button></article></section>`);
 }
 
