@@ -6,7 +6,7 @@ import { multiplayer } from "./services/multiplayer";
 import type { AiDifficulty, DuelResult, DirectGameMode, GameMode, MultiplayerRound, Room, Round, RpsChoice } from "./types";
 
 type Page = "home" | "mode-select" | "game" | "multiplayer" | "how-to";
-const appVersion = "2.4.1";
+const appVersion = "2.5.0";
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const mobileViewport = window.matchMedia("(max-width: 700px)");
 let page: Page = "home";
@@ -36,7 +36,7 @@ let bottleHitIds = new Set<number>();
 let bottleRoundId = "";
 let seriesPlayerWins = 0;
 let seriesOpponentWins = 0;
-const seriesModes: DirectGameMode[] = ["original-quick-draw", "word-duel", "trail-trace", "bottle-shot"];
+const seriesModes: DirectGameMode[] = ["original-quick-draw", "word-duel", "trail-trace", "bottle-shot", "rock-paper-scissors"];
 loadMuted();
 
 function readStats() {
@@ -51,8 +51,7 @@ function nav(next: Page) {
   if (!keepRoom) {
     stopRoomSubscription?.(); stopRoomSubscription = undefined;
     stopQuickMatchSubscription?.(); stopQuickMatchSubscription = undefined;
-    if (quickMatchStatus === "searching") void multiplayer.cancelQuickMatch();
-    quickMatchStatus = "idle";
+    // Queue state lives on the server; returning to Multi restores an in-progress search.
   }
   page = next;
   if (!keepRoom || next !== "game") round = mode === "word-duel"
@@ -62,12 +61,15 @@ function nav(next: Page) {
     : mode === "rock-paper-scissors" ? { number: round.number, mode: "rock-paper-scissors", phase: "menu" }
     : { number: round.number, mode: "original-quick-draw", phase: "menu" };
   render();
-  if (next === "multiplayer" && multiplayerRoom) listenToRoom();
+  if (next === "multiplayer") {
+    if (multiplayerRoom) listenToRoom();
+    else void restoreQuickMatch();
+  }
 }
 
 function layout(content: string) {
   return `<main class="shell">
-    <header class="masthead"><button class="brand" data-page="home" aria-label="High Noon Showdown home"><span>HN</span> HIGH NOON SHOWDOWN</button><nav><button data-page="home">HOME</button><button id="sound-toggle" aria-pressed="${isMuted()}">${isMuted() ? "UNMUTE" : "MUTE"}</button><button data-page="mode-select">PLAY</button><button data-page="multiplayer">MULTIPLAYER</button><button data-page="how-to">HOW TO PLAY</button></nav></header>
+    <header class="masthead"><button class="brand" data-page="home" aria-label="High Noon Showdown home"><span>HN</span> HIGH NOON SHOWDOWN</button><nav aria-label="Primary navigation"><button data-page="home">HOME</button><button data-page="mode-select">PLAY</button><button data-page="multiplayer">MULTI</button><button id="sound-toggle" aria-pressed="${isMuted()}">${isMuted() ? "UNMUTE" : "MUTE"}</button><button data-page="how-to">HOW TO PLAY</button></nav></header>
     ${content}
     <footer><span>ORIGINAL WESTERN DUEL GAME</span><span>ONE BELL. ONE SHOT.</span><span>VERSION ${appVersion}</span></footer>
   </main>`;
@@ -127,9 +129,10 @@ function bottleShotView(seed: number, startAt: number | undefined, endAt: number
   const waveIndex = startAt === undefined ? -1 : Math.floor((now - startAt) / bottleTargetMs);
   const bottles = !waiting && !ended && waveIndex >= 0 ? createBottleSchedule(seed).slice(waveIndex * bottlesPerWave, (waveIndex + 1) * bottlesPerWave) : [];
   const seconds = endAt ? Math.max(0, Math.ceil((endAt - now) / 1000)) : 30;
-  const prompt = result ? `You scored ${score}; ${opponentScore === undefined ? "Ash" : "your rival"} scored ${opponentScore ?? 0}.` : waiting ? "Get set. The shared bottle run starts together." : ended ? (submitted ? "Score sent. Waiting for the host to settle the round." : "Time is up. Sending your score.") : "Shoot green and blue bottles for +10. Red bottles and empty-range shots cost 10. Each bottle breaks after one hit.";
+  const seriesControl = title.startsWith("LIVE") && multiplayerRoom?.mode === "showdown-series" && result ? multiplayerRoom.roundState.round?.winner === "tie" ? " Tie round: the host retains control for the replay." : canStartMultiplayerRound() ? " You won the prior round, so you control the next round." : " The prior-round winner controls the next round." : "";
+  const prompt = result ? `You scored ${score}; ${opponentScore === undefined ? "Ash" : "your rival"} scored ${opponentScore ?? 0}.${seriesControl}` : waiting ? "Get set. The shared bottle run starts together." : ended ? (submitted ? "Score sent. Waiting for the host to settle the round." : "Time is up. Sending your score.") : "Shoot green and blue bottles for +10. Red bottles and empty-range shots cost 10. Each bottle breaks after one hit.";
   const bottleButtons = bottles.filter(target => !bottleHitIds.has(target.id)).map(target => `<button class="bottle bottle-${target.kind}" data-bottle-id="${target.id}" style="left:${target.x}%;top:${target.y}%" aria-label="Shoot ${target.kind} bottle">${target.kind === "red" ? "-10" : "+10"}</button>`).join("");
-  return layout(`<section class="bottle-game"><div class="bottle-heading"><p class="eyebrow">${title}</p><h1>${result ?? (waiting ? "GET READY" : ended ? "TIME" : "BOTTLE SHOT")}</h1><p>${prompt}</p></div><div class="bottle-stats"><span><b>${seconds}</b> SEC</span><span><b>${score}</b> SCORE</span><span>GREEN / BLUE <b>+10</b></span><span>RED / MISS <b>-10</b></span></div><div class="bottle-range" aria-live="polite">${bottleButtons}</div><p class="trace-hint">${waiting ? "SIX TARGETS APPEAR ON THE BELL." : "TAP OR CLICK A BOTTLE ONCE. EMPTY-RANGE SHOTS COST 10. SIX TARGETS CHANGE EVERY 1.5 SECONDS."}</p>${startAt === undefined ? `<button id="shot-button" class="primary">START BOTTLE SHOT</button>` : result ? `<div class="duel-actions">${title.startsWith("LIVE") && multiplayerRoom?.hostId === multiplayerUserId ? `<button id="next-round" class="primary">NEXT ROUND</button>` : ""}${title.startsWith("LIVE") ? `<button id="leave-duel" class="outline">LEAVE ROOM</button>` : ""}</div>` : ""}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR SCORE</span><b>${score}</b></div><div><span>${opponentScore === undefined ? "TARGET" : "RIVAL SCORE"}</span><b>${opponentScore ?? "--"}</b></div><div><span>ROUND TIME</span><b>30 SEC</b></div><div><span>MODE</span><b>BOTTLE SHOT</b></div></section>`);
+  return layout(`<section class="bottle-game"><div class="bottle-heading"><p class="eyebrow">${title}</p><h1>${result ?? (waiting ? "GET READY" : ended ? "TIME" : "BOTTLE SHOT")}</h1><p>${prompt}</p></div><div class="bottle-stats"><span><b>${seconds}</b> SEC</span><span><b>${score}</b> SCORE</span><span>GREEN / BLUE <b>+10</b></span><span>RED / MISS <b>-10</b></span></div><div class="bottle-range" aria-live="polite">${bottleButtons}</div><p class="trace-hint">${waiting ? "SIX TARGETS APPEAR ON THE BELL." : "TAP OR CLICK A BOTTLE ONCE. EMPTY-RANGE SHOTS COST 10. SIX TARGETS CHANGE EVERY 1.5 SECONDS."}</p>${startAt === undefined ? `<button id="shot-button" class="primary">START BOTTLE SHOT</button>` : result ? `<div class="duel-actions">${title.startsWith("LIVE") && canStartMultiplayerRound() ? `<button id="next-round" class="primary">NEXT ROUND</button>` : ""}${title.startsWith("LIVE") ? `<button id="leave-duel" class="outline">LEAVE ROOM</button>` : ""}</div>` : ""}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR SCORE</span><b>${score}</b></div><div><span>${opponentScore === undefined ? "TARGET" : "RIVAL SCORE"}</span><b>${opponentScore ?? "--"}</b></div><div><span>ROUND TIME</span><b>30 SEC</b></div><div><span>MODE</span><b>BOTTLE SHOT</b></div></section>`);
 }
 
 function gameView() {
@@ -158,9 +161,9 @@ function gameView() {
 
 function rpsView(playerChoice?: RpsChoice, opponentChoice?: RpsChoice, result?: DuelResult, title = "ROCK PAPER SCISSORS", seriesScore = [seriesPlayerWins, seriesOpponentWins], decisionEndsAt?: number, roundNumber = round.number, matchWinner?: boolean, hostCanDeal = true) {
   const seconds = decisionEndsAt ? Math.max(0, Math.ceil((decisionEndsAt - Date.now()) / 1000)) : 0;
-  const prompt = result ? (matchWinner ? `${result.message} ${result.outcome === "win" ? "You take the match." : "Your rival takes the match."}` : `${result.message} ${title.startsWith("LIVE") || title.startsWith("SHOWDOWN") ? "The host starts the next round." : "Start the next round."}`) : playerChoice ? "Choice locked. Waiting for your rival to reveal." : "Choose simultaneously: Rock beats Scissors, Scissors beats Paper, Paper beats Rock.";
+  const prompt = result ? (matchWinner ? `${result.message} ${result.outcome === "win" ? "You take the match." : "Your rival takes the match."}` : `${result.message} ${title.startsWith("SHOWDOWN") ? (result.outcome === "tie" ? "Tie round: the host retains control for the replay." : hostCanDeal ? "You won the prior round, so you control the next round." : "The prior-round winner controls the next round.") : title.startsWith("LIVE") ? "The host starts the next round." : "Start the next round."}`) : playerChoice ? "Choice locked. Waiting for your rival to reveal." : "Choose simultaneously: Rock beats Scissors, Scissors beats Paper, Paper beats Rock.";
   const live = title.startsWith("LIVE") || title.startsWith("SHOWDOWN");
-  const actions = result ? (matchWinner && live ? `<button id="leave-duel" class="outline">LEAVE ROOM</button>` : live && !hostCanDeal ? `<p class="waiting-note">HOST STARTS THE NEXT ROUND</p>` : `<button id="shot-button" class="primary">${matchWinner ? "PLAY NEW MATCH" : "NEXT ROUND"}</button>`) : !decisionEndsAt ? `<button id="shot-button" class="primary">START MATCH</button>` : `<div class="rps-actions">${(["rock", "paper", "scissors"] as RpsChoice[]).map(choice => `<button class="primary" data-rps-choice="${choice}" ${playerChoice || seconds === 0 ? "disabled" : ""}>${choice.toUpperCase()}</button>`).join("")}</div>`;
+  const actions = result ? (matchWinner && live ? `<button id="leave-duel" class="outline">LEAVE ROOM</button>` : live && !hostCanDeal ? `<p class="waiting-note">${title.startsWith("SHOWDOWN") ? "PRIOR-ROUND WINNER STARTS NEXT" : "HOST STARTS THE NEXT ROUND"}</p>` : `<button id="shot-button" class="primary">${matchWinner ? "PLAY NEW MATCH" : "NEXT ROUND"}</button>`) : !decisionEndsAt ? `<button id="shot-button" class="primary">START MATCH</button>` : `<div class="rps-actions">${(["rock", "paper", "scissors"] as RpsChoice[]).map(choice => `<button class="primary" data-rps-choice="${choice}" ${playerChoice || seconds === 0 ? "disabled" : ""}>${choice.toUpperCase()}</button>`).join("")}</div>`;
   return layout(`<section class="rps-game"><p class="eyebrow">${title} · ROUND ${String(roundNumber).padStart(2, "0")}</p><h1>${result ? (result.outcome === "tie" ? "TIE" : matchWinner ? (result.outcome === "win" ? "MATCH WON" : "MATCH LOST") : result.outcome === "win" ? "ROUND WON" : "ROUND LOST") : "MAKE YOUR SIGN"}</h1><div class="rps-choices"><div><span>YOUR CHOICE</span><b>${playerChoice?.toUpperCase() ?? "HIDDEN"}</b></div><div><span>RIVAL'S CHOICE</span><b>${result ? opponentChoice?.toUpperCase() : "HIDDEN"}</b></div></div><p class="duel-prompt">${prompt}</p>${!result ? `<p class="waiting-note">DECISION TIME: ${seconds} SEC</p>` : ""}${actions}${fullscreenButton()}</section><section class="scoreboard"><div><span>MATCH YOU</span><b>${seriesScore[0]}</b></div><div><span>MATCH RIVAL</span><b>${seriesScore[1]}</b></div><div><span>FIRST TO</span><b>3</b></div><div><span>ROUND</span><b>${roundNumber}</b></div></section>`);
 }
 
@@ -178,25 +181,27 @@ function multiplayerGameView() {
   const won = shared.winner === (isHost ? "host" : "guest");
   if (activeMode === "rock-paper-scissors") {
     const title = `${room.mode === "showdown-series" ? "SHOWDOWN SERIES" : "LIVE ROCK PAPER SCISSORS"} · ROOM ${room.code}`;
-    const result = ended ? { outcome: won ? "win" : "loss", opponentReactionMs: 0, message: shared.hostAction?.choice === shared.guestAction?.choice ? "Matching signs tie; the host starts the next round." : "Rock beats Scissors, Scissors beats Paper, Paper beats Rock." } as DuelResult : undefined;
-    return rpsView(mine?.choice, opponent?.choice, result, title, [isHost ? shared.seriesHostWins ?? 0 : shared.seriesGuestWins ?? 0, isHost ? shared.seriesGuestWins ?? 0 : shared.seriesHostWins ?? 0], shared.decisionEndsAt ? Date.parse(shared.decisionEndsAt) : undefined, shared.seriesRound ?? 1, Boolean(shared.matchWinner), isHost).replace("id=\"shot-button\"", `id="next-round"`);
+    const result = ended ? { outcome: shared.winner === "tie" ? "tie" : won ? "win" : "loss", opponentReactionMs: 0, message: shared.winner === "tie" ? "Matching signs tie; the host controls the replay." : "Rock beats Scissors, Scissors beats Paper, Paper beats Rock." } as DuelResult : undefined;
+    return rpsView(mine?.choice, opponent?.choice, result, title, [isHost ? shared.seriesHostWins ?? 0 : shared.seriesGuestWins ?? 0, isHost ? shared.seriesGuestWins ?? 0 : shared.seriesHostWins ?? 0], shared.decisionEndsAt ? Date.parse(shared.decisionEndsAt) : undefined, shared.seriesRound ?? 1, Boolean(shared.matchWinner), canStartMultiplayerRound(room)).replace("id=\"shot-button\"", `id="next-round"`);
   }
   if (activeMode === "bottle-shot") {
     const mineScore = mine?.score ?? bottleScoreTotal;
-    return bottleShotView(shared.targetSeed!, Date.parse(shared.startAt), Date.parse(shared.endAt!), `LIVE BOTTLE SHOT · ROOM ${room.code}`, mineScore, opponent?.score, ended ? (won ? "YOU WIN" : "YOU LOSE") : undefined, Boolean(mine));
+    return bottleShotView(shared.targetSeed!, Date.parse(shared.startAt), Date.parse(shared.endAt!), `LIVE BOTTLE SHOT · ROOM ${room.code}`, mineScore, opponent?.score, ended ? (shared.winner === "tie" ? "TIE" : won ? "YOU WIN" : "YOU LOSE") : undefined, Boolean(mine));
   }
   if (activeMode === "trail-trace") {
     const mineScore = mine?.score;
     const opponentScore = opponent?.score;
-    const prompt = ended ? `You scored ${mineScore ?? 0}; your rival scored ${opponentScore ?? 0}. ${isHost ? "Start the next round when ready." : "Wait for the host to start the next round."}` : mine ? "Score submitted. Waiting for your rival's trace." : "Start at the left marker, hold your pointer on the canvas, and release after reaching the far end.";
-    const controls = ended ? `<div class="duel-actions">${isHost ? `<button id="next-round" class="primary">NEXT ROUND</button>` : ""}<button id="leave-duel" class="outline">LEAVE ROOM</button></div>` : "";
-    return layout(`<section class="trace-game"><div class="trace-heading"><p class="eyebrow">LIVE TRAIL TRACE · ROOM ${room.code}</p><h1>${ended ? (won ? "YOU WIN" : "YOU LOSE") : mine ? "SCORE LOCKED" : "TRACE THE TRAIL"}</h1><p>${prompt}</p></div><canvas id="trail-canvas" class="trail-canvas" aria-label="Trace the shared winding trail" data-seed="${shared.pathSeed}" ${mine || ended ? "data-disabled=true" : ""}></canvas><p class="trace-hint">BOTH PLAYERS TRACE THIS SAME SEEDED TRAIL. HIGHEST SCORE WINS.</p>${controls}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR SCORE</span><b>${mineScore ?? "--"}</b></div><div><span>RIVAL SCORE</span><b>${opponentScore ?? "--"}</b></div><div><span>YOUR PROGRESS</span><b>${mine?.progress ?? "--"}${mine ? "%" : ""}</b></div><div><span>YOUR ACCURACY</span><b>${mine?.accuracy ?? "--"}${mine ? "%" : ""}</b></div></section>`);
+    const canControl = canStartMultiplayerRound(room);
+    const prompt = ended ? `You scored ${mineScore ?? 0}; your rival scored ${opponentScore ?? 0}. ${room.mode === "showdown-series" ? (shared.winner === "tie" ? "Tie round: the host retains control for the replay." : canControl ? "You won the prior round, so you control the next round." : "The prior-round winner controls the next round.") : isHost ? "Start the next round when ready." : "Wait for the host to start the next round."}` : mine ? "Score submitted. Waiting for your rival's trace." : "Start at the left marker, hold your pointer on the canvas, and release after reaching the far end.";
+    const controls = ended ? `<div class="duel-actions">${canControl ? `<button id="next-round" class="primary">NEXT ROUND</button>` : ""}<button id="leave-duel" class="outline">LEAVE ROOM</button></div>` : "";
+    return layout(`<section class="trace-game"><div class="trace-heading"><p class="eyebrow">LIVE TRAIL TRACE · ROOM ${room.code}</p><h1>${ended ? (shared.winner === "tie" ? "TIE" : won ? "YOU WIN" : "YOU LOSE") : mine ? "SCORE LOCKED" : "TRACE THE TRAIL"}</h1><p>${prompt}</p></div><canvas id="trail-canvas" class="trail-canvas" aria-label="Trace the shared winding trail" data-seed="${shared.pathSeed}" ${mine || ended ? "data-disabled=true" : ""}></canvas><p class="trace-hint">BOTH PLAYERS TRACE THIS SAME SEEDED TRAIL. HIGHEST SCORE WINS.</p>${controls}${fullscreenButton()}</section><section class="scoreboard"><div><span>YOUR SCORE</span><b>${mineScore ?? "--"}</b></div><div><span>RIVAL SCORE</span><b>${opponentScore ?? "--"}</b></div><div><span>YOUR PROGRESS</span><b>${mine?.progress ?? "--"}${mine ? "%" : ""}</b></div><div><span>YOUR ACCURACY</span><b>${mine?.accuracy ?? "--"}${mine ? "%" : ""}</b></div></section>`);
   }
   const waiting = !multiplayerSignal || multiplayerSignal.roundId !== shared.id;
   const label = ended ? (shared.winner === "tie" ? "TIE" : won ? "YOU WIN" : "YOU LOSE") : waiting ? "WAIT" : activeMode === "word-duel" ? shared.word! : "DRAW!";
-  const prompt = ended ? `${mine?.falseStart ? "False start." : won ? "You were first on the signal." : "Your opponent was first on the signal."} ${shared.matchWinner ? "Series complete." : isHost ? "Start the next round when ready." : "Wait for the host to start the next round."}` : waiting ? "Shared signal incoming. An early action loses." : activeMode === "word-duel" ? "Type the shared word exactly, then press Enter." : "DRAW! Send your one shot.";
+  const canControl = canStartMultiplayerRound(room);
+  const prompt = ended ? `${shared.winner === "tie" ? "Tie round." : mine?.falseStart ? "False start." : won ? "You were first on the signal." : "Your opponent was first on the signal."} ${shared.matchWinner ? "Series complete." : room.mode === "showdown-series" ? (shared.winner === "tie" ? "The host retains control for the replay." : canControl ? "You won the prior round, so you control the next round." : "The prior-round winner controls the next round.") : isHost ? "Start the next round when ready." : "Wait for the host to start the next round."}` : waiting ? "Shared signal incoming. An early action loses." : activeMode === "word-duel" ? "Type the shared word exactly, then press Enter." : "DRAW! Send your one shot.";
   const action = ended
-    ? `<div class="duel-actions">${isHost ? `<button id="next-round" class="primary">NEXT ROUND</button>` : "<p class=\"waiting-note\">HOST CHOOSES THE NEXT ROUND</p>"}<button id="leave-duel" class="outline" ${multiplayerBusy ? "disabled" : ""}>LEAVE ROOM</button></div>`
+    ? `<div class="duel-actions">${canControl ? `<button id="next-round" class="primary">NEXT ROUND</button>` : `<p class="waiting-note">${room.mode === "showdown-series" ? "PRIOR-ROUND WINNER CHOOSES NEXT" : "HOST CHOOSES THE NEXT ROUND"}</p>`}<button id="leave-duel" class="outline" ${multiplayerBusy ? "disabled" : ""}>LEAVE ROOM</button></div>`
     : waiting ? activeMode === "original-quick-draw" && mobileQuickDrawWait()
       ? `<p class="waiting-note">WAIT FOR DRAW!</p>`
       : `<button id="shot-button" class="outline mobile-wait-control" ${multiplayerActionBusy || mine ? "disabled" : ""}>FALSE START</button><p class="key-hint">EARLY ACTION LOSES</p>`
@@ -220,7 +225,7 @@ function multiplayerView() {
   const guestLabel = room?.guestId ? (isHost ? "GUEST CONNECTED" : "YOU") : "OPEN SEAT";
   const transportLabel = multiplayer.transportStatus() === "connected" ? "PEER LINK CONNECTED" : multiplayer.transportStatus() === "connecting" ? "PEER LINK CONNECTING" : multiplayer.transportStatus() === "unavailable" ? "PEER LINK UNAVAILABLE: DATABASE FALLBACK" : "DATABASE FALLBACK";
   const message = multiplayerNotice || (room ? (room.status === "ready" ? `Both gunslingers are ready. ${transportLabel}.` : room.guestId ? `Both players must ready up. ${transportLabel}.` : "Share this code with your opponent, then wait for them to join.") : "Create a private room or join your friend's code. Anonymous sign-in happens automatically.");
-  const quickMessage = quickMatchNotice || (quickMatchStatus === "searching" ? "Searching for a gunslinger who selected this mode..." : quickMatchStatus === "matched" ? "Match found. Your duel room is ready." : "Choose a mode, then search the public Quick Game queue.");
+  const quickMessage = quickMatchNotice || (quickMatchStatus === "searching" ? "Searching securely. Reopening this page keeps your place; we also check for a match every few seconds." : quickMatchStatus === "matched" ? "Match found. Your duel room is ready." : "Choose a mode, then search the public Quick Game queue.");
   const roomControls = room
     ? `<div class="lobby-controls"><button class="primary" id="ready-room" ${disabled}>${ownReady ? "NOT READY" : "READY UP"}</button><button class="outline" id="leave-room" ${disabled}>LEAVE ROOM</button></div><p class="lobby-message" aria-live="polite">${message}</p>`
     : `<section class="quick-match"><p class="eyebrow">QUICK GAME</p><div class="quick-match-controls"><label>DUEL MODE<select id="quick-match-mode" ${disabled}>${modeOptions(quickMatchMode)}</select></label><button class="primary" id="quick-game" ${quickMatchStatus === "searching" ? "disabled" : disabled}>QUICK GAME</button><button class="outline" id="cancel-search" ${quickMatchStatus === "idle" ? "disabled" : disabled}>CANCEL SEARCH</button></div><p class="quick-match-status" data-status="${quickMatchStatus}" aria-live="polite">${quickMatchStatus.toUpperCase()} · ${quickMessage}</p></section><div class="lobby-controls"><button class="primary" id="create-room" ${disabled}>CREATE ROOM</button><label>DUEL MODE<select id="room-mode" ${disabled}>${modeOptions("original-quick-draw")}</select></label></div><div class="lobby-controls"><label>ROOM CODE<input id="room-code" maxlength="6" autocomplete="off" placeholder="ABC123" ${disabled} /></label><button class="outline" id="join-room" ${disabled}>JOIN ROOM</button></div><p class="lobby-message" aria-live="polite">${message}</p>`;
@@ -351,7 +356,7 @@ function listenToRoom() {
     if (session !== multiplayerSession) return;
     multiplayerRoom = nextRoom;
     if (!nextRoom) multiplayerNotice = "The host left the room.";
-    if (nextRoom?.status === "ready" && nextRoom.hostId === multiplayerUserId) void startMultiplayerRound();
+    if (nextRoom?.status === "ready" && canStartMultiplayerRound(nextRoom)) void startMultiplayerRound();
     if (nextRoom?.status === "playing" && nextRoom.roundState.round) {
       syncMultiplayerRound(nextRoom.roundState.round);
       if (page !== "game") { mode = nextRoom.mode; page = "game"; }
@@ -375,7 +380,7 @@ function joinRoom() {
 }
 function toggleReady() { return roomAction(async () => {
   multiplayerRoom = await multiplayer.setReady(!(multiplayerRoom?.hostId === multiplayerUserId ? multiplayerRoom?.roundState.hostReady : multiplayerRoom?.roundState.guestReady));
-  if (multiplayerRoom.status === "ready" && multiplayerRoom.hostId === multiplayerUserId) void startMultiplayerRound();
+  if (multiplayerRoom.status === "ready" && canStartMultiplayerRound(multiplayerRoom)) void startMultiplayerRound();
 }); }
 function resetMultiplayerState() {
   multiplayerSession++;
@@ -402,6 +407,36 @@ function leaveRoom() {
     }
   });
 }
+function acceptQuickMatch(nextRoom: Room) {
+  multiplayerRoom = nextRoom;
+  quickMatchStatus = "matched";
+  quickMatchNotice = `Matched in room ${nextRoom.code}. Ready up when you are set.`;
+  stopQuickMatchSubscription?.();
+  stopQuickMatchSubscription = undefined;
+  listenToRoom();
+}
+async function restoreQuickMatch() {
+  if (!multiplayer.isConfigured() || multiplayerRoom || quickMatchStatus === "matched") return;
+  try {
+    multiplayerUserId ??= await multiplayer.authenticate();
+    const restored = await multiplayer.restoreQuickMatch();
+    if (!restored) return;
+    quickMatchMode = restored.mode;
+    if (restored.room) { acceptQuickMatch(restored.room); if (page === "multiplayer") render(); return; }
+    quickMatchStatus = "searching";
+    quickMatchNotice = "Search restored. Looking for a gunslinger in your selected mode...";
+    if (!stopQuickMatchSubscription) {
+      stopQuickMatchSubscription = multiplayer.subscribeToQuickMatch(acceptQuickMatch, message => {
+        quickMatchStatus = "error"; quickMatchNotice = message; if (page === "multiplayer") render();
+      });
+    }
+    if (page === "multiplayer") render();
+  } catch (error) {
+    quickMatchStatus = "error";
+    quickMatchNotice = error instanceof Error ? error.message : "Unable to restore Quick Game search.";
+    if (page === "multiplayer") render();
+  }
+}
 function startQuickMatch() {
   quickMatchMode = root.querySelector<HTMLSelectElement>("#quick-match-mode")?.value as GameMode ?? quickMatchMode;
   return roomAction(async () => {
@@ -409,13 +444,9 @@ function startQuickMatch() {
       multiplayerUserId = await multiplayer.authenticate();
       quickMatchStatus = "searching"; quickMatchNotice = "";
       stopQuickMatchSubscription?.();
-      stopQuickMatchSubscription = multiplayer.subscribeToQuickMatch(nextRoom => {
-        multiplayerRoom = nextRoom; quickMatchStatus = "matched"; quickMatchNotice = `Matched in room ${nextRoom.code}. Ready up when you are set.`;
-        stopQuickMatchSubscription?.(); stopQuickMatchSubscription = undefined; listenToRoom();
-        if (page === "multiplayer") render();
-      }, message => { quickMatchStatus = "error"; quickMatchNotice = message; if (page === "multiplayer") render(); });
+      stopQuickMatchSubscription = multiplayer.subscribeToQuickMatch(nextRoom => { acceptQuickMatch(nextRoom); if (page === "multiplayer") render(); }, message => { quickMatchStatus = "error"; quickMatchNotice = message; if (page === "multiplayer") render(); });
       const nextRoom = await multiplayer.requestQuickMatch(quickMatchMode);
-      if (nextRoom) { multiplayerRoom = nextRoom; quickMatchStatus = "matched"; quickMatchNotice = `Matched in room ${nextRoom.code}. Ready up when you are set.`; stopQuickMatchSubscription?.(); stopQuickMatchSubscription = undefined; listenToRoom(); }
+      if (nextRoom) acceptQuickMatch(nextRoom);
     } catch (error) {
       quickMatchStatus = "error";
       quickMatchNotice = error instanceof Error ? error.message : "Unable to start Quick Game.";
@@ -426,22 +457,34 @@ function cancelQuickMatch() {
   return roomAction(async () => {
     const nextRoom = await multiplayer.cancelQuickMatch();
     stopQuickMatchSubscription?.(); stopQuickMatchSubscription = undefined;
-    if (nextRoom) { multiplayerRoom = nextRoom; quickMatchStatus = "matched"; quickMatchNotice = `Matched in room ${nextRoom.code}. Ready up when you are set.`; listenToRoom(); }
+    if (nextRoom) acceptQuickMatch(nextRoom);
     else { quickMatchStatus = "idle"; quickMatchNotice = "Search cancelled."; }
   });
 }
 
+function canStartMultiplayerRound(room = multiplayerRoom) {
+  if (!room) return false;
+  const prior = room.roundState.round;
+  const controller = room.mode === "showdown-series" && prior?.winner ? prior.nextRoundHost ?? room.hostId : room.hostId;
+  return controller === multiplayerUserId;
+}
+function sleep(ms: number) { return new Promise<void>(resolve => window.setTimeout(resolve, ms)); }
+
 async function startMultiplayerRound() {
   const room = multiplayerRoom;
-  if (!room || room.hostId !== multiplayerUserId || !room.guestId || !room.roundState.hostReady || !room.roundState.guestReady || (room.status !== "ready" && !room.roundState.round?.winner) || sharedStartPending) return;
+  if (!room || !canStartMultiplayerRound(room) || !room.guestId || !room.roundState.hostReady || !room.roundState.guestReady || (room.status !== "ready" && !room.roundState.round?.winner) || sharedStartPending) return;
   const session = multiplayerSession;
   sharedStartPending = true;
   multiplayerActionBusy = false;
   tracePoints = [];
   try {
     if (room.roundState.round?.matchWinner) return;
+    // Let an in-flight peer handshake settle briefly; database fallback still gets a padded shared start.
+    const settleUntil = Date.now() + 1_200;
+    while (multiplayer.transportStatus() === "connecting" && Date.now() < settleUntil) await sleep(100);
     const gameMode: DirectGameMode = room.mode === "showdown-series" ? seriesModes[Math.floor(Math.random() * seriesModes.length)]! : room.mode as DirectGameMode;
-    const startAt = new Date(Date.now() + (gameMode === "trail-trace" ? 0 : gameMode === "bottle-shot" || gameMode === "rock-paper-scissors" ? 1500 : randomBetween(settings.minWaitMs, settings.maxWaitMs))).toISOString();
+    const transportPadMs = multiplayer.transportStatus() === "connected" ? 3_000 : 4_500;
+    const startAt = new Date(Date.now() + (gameMode === "trail-trace" ? transportPadMs : gameMode === "bottle-shot" || gameMode === "rock-paper-scissors" ? transportPadMs : transportPadMs + randomBetween(settings.minWaitMs, settings.maxWaitMs))).toISOString();
     const shared: MultiplayerRound = {
       id: crypto.randomUUID(),
       startAt,
@@ -505,10 +548,16 @@ function syncMultiplayerRound(shared: MultiplayerRound) {
     multiplayerSignal.at = performance.now();
     playSound("signal");
   };
-  const delay = multiplayer.localStartAt(shared.startAt) - Date.now();
+  // Convert the synchronized wall-clock target to this document's monotonic clock once.
+  const targetAt = performance.now() + Math.max(0, multiplayer.localStartAt(shared.startAt) - Date.now());
+  const armSignal = () => {
+    const remaining = targetAt - performance.now();
+    if (remaining > 20) { drawTimer = window.setTimeout(armSignal, remaining - 12); return; }
+    if (remaining > 0) { drawTimer = window.setTimeout(armSignal, remaining); return; }
+    activateSignal();
+  };
   if (!shared.winner) {
-    if (delay <= 0) activateSignal();
-    else drawTimer = window.setTimeout(activateSignal, delay);
+    armSignal();
   }
 }
 

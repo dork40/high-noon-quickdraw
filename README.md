@@ -1,6 +1,6 @@
 # High Noon Showdown
 
-High Noon Showdown v2.4.1 is an original Wild West browser game with Rock Paper Scissors, synthesized Web Audio effects, and casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
+High Noon Showdown v2.5.0 is an original Wild West browser game with Rock Paper Scissors, synthesized Web Audio effects, and casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
 
 ## Run
 
@@ -18,7 +18,7 @@ Copy `.env.example` to `.env.local` and add the Supabase values before using mul
 - Trail Trace: press and hold on the canvas, follow the winding gold path, then release to submit a score based on progress and accuracy.
 - Rock Paper Scissors: choose Rock, Paper, or Scissors simultaneously in a best-of-five match; first to three round wins takes the match.
 - Sound: use the visible `MUTE` / `UNMUTE` control. Web Audio starts only after interaction and safely does nothing when unavailable.
-- Navigation: the labeled `HOME` button and the High Noon Showdown brand both return to the main menu. The main menu foregrounds `PLAY VS AI` and `MULTIPLAYER`; `HOW TO PLAY` is a supporting action below them.
+- Navigation: the top navigation is ordered `HOME`, `PLAY`, `MULTI`, `MUTE` / `UNMUTE`, and `HOW TO PLAY`. `HOME` and the High Noon Showdown brand return to the main menu; `PLAY` opens AI modes and `MULTI` opens multiplayer.
 - During any versus-AI or live multiplayer duel, select `FULL SCREEN` to expand the game. Select `EXIT FULL SCREEN`, or use the browser's fullscreen exit gesture, to return.
 
 ## Multiplayer Setup
@@ -204,16 +204,16 @@ Use the project's publishable/anon key only. Never expose a service-role key in 
 - **Trail Trace:** trace the generated winding target line with a mouse, touch, or pen. The final score combines farthest target progress with average line accuracy, with a small completion bonus.
 - **Bottle Shot:** a 30-second target range with six smaller, touch-accessible bottles visible at once. Click or tap each active bottle once to break it: green and blue bottles add +10, while the more-common red bottles subtract 10. A shot or tap on the range that misses an active bottle also subtracts 10. A new seeded six-bottle wave appears every 1.5 seconds; Ash's target hits, red-bottle mistakes, and range misses vary by difficulty.
 - **Rock Paper Scissors:** a simultaneous best-of-five, first-to-three match. Rock beats Scissors, Scissors beats Paper, and Paper beats Rock; matching choices tie and replay without awarding a round.
-- **Showdown Series:** best of five, first to three wins. Every round randomly selects exactly Quick Draw, Word Duel, Trail Trace, or Bottle Shot. Rock Paper Scissors is intentionally excluded.
+- **Showdown Series:** best of five, first to three wins. Every round randomly selects Quick Draw, Word Duel, Trail Trace, Bottle Shot, or Rock Paper Scissors. In multiplayer, the prior-round winner controls the next round; a tie returns control to the host for a replay. AI series behavior remains unchanged.
 - In every AI mode, acting before the signal is a false start and loses the round.
 
 Before starting a versus-AI mode, choose Ash Mercer's difficulty: **Easy** reacts randomly in 1200-2200 ms and traces around 48-72 points, **Normal** reacts randomly in 550-1400 ms and traces around 68-88 points, and **Hard** reacts randomly in 250-650 ms and traces around 84-98 points. Trail Trace begins immediately; the two existing signal modes keep their random 2-6 second waiting period. The active difficulty appears during the AI duel, and wins, losses, and the fastest successful reaction remain stored locally when browser storage is available.
 
 ## Multiplayer Behavior
 
-Create a six-character private room code or join an available room as before. Quick Game selects a mode and queues the signed-in player; the next player requesting that same mode is atomically paired into a new `duel_rooms` row. The first requester receives the room through their queue's Realtime update, while the second receives it directly from the RPC. Both sessions then subscribe to the room and can mark themselves ready. Cancel Search only removes an unmatched queue entry.
+Create a six-character private room code or join an available room as before. Quick Game selects a mode and queues the signed-in player; the next player requesting that same mode is atomically paired into a new `duel_rooms` row. A search remains queued when navigating away and is restored on return. Realtime delivers changes promptly, while a 2.5-second authenticated queue fetch checks for a missed event or a reconnect; only one local subscription/poll loop is active and cancel or leave stops it. Both sessions then subscribe to the room and can mark themselves ready. Cancel Search only removes an unmatched queue entry.
 
-When both players are ready, the host writes a new shared `round_state.round` with a random 2-6 second future `startAt` timestamp. Each joined room creates one `RTCPeerConnection` using public STUN servers. Supabase Realtime Broadcast carries SDP/ICE signaling only; after the DataChannel opens, the guest sends five clock pings and estimates its offset from the host using the lowest-round-trip sample. It uses that estimate to schedule the host-authored start locally. If no peer link is available, browsers still use the shared timestamp, but start alignment is less precise.
+When both players are ready, the round controller briefly allows an in-flight peer handshake up to 1.2 seconds to settle, then writes a shared future `startAt` padded by at least 3 seconds with direct transport or 4.5 seconds on database fallback (plus the normal random draw wait where applicable). Each joined room creates one `RTCPeerConnection` using public STUN servers. Supabase Realtime Broadcast carries SDP/ICE signaling only; after the DataChannel opens, the guest sends five clock pings and estimates its offset from the host using the lowest-round-trip sample. Each browser converts that shared target to its local monotonic `performance.now()` timeline, arms the signal locally, renders/enables it, and only then records the reaction clock. If no peer link is available, browsers still use the padded shared timestamp, but start alignment is less precise.
 
 For Quick Draw and Word Duel, each browser renders and activates its own signal/control before recording `performance.now()`. A shot or correct word reports elapsed milliseconds from that local mark through both the DataChannel event and the durable `round_state` action, so displayed reaction results are local measurements rather than stale signal or wall-clock timestamps. The host compares those measured values, not database/action arrival timestamps. Reactions within 3 ms are a tie; a short 1.2-second fallback window lets a missing peer action arrive before a lone valid reaction is awarded. Actions before a local activation are false starts; two false starts tie.
 
@@ -221,14 +221,14 @@ For Trail Trace, the deterministic path is scored locally and a submission is ac
 
 ### Transport Guarantees And Limits
 
-- A connected DataChannel gives direct browser-to-browser delivery for live actions, a small guest-to-host clock-offset estimate, and reduced dependence on database subscription latency. It does not guarantee a fixed latency, exact clock alignment, ordering across the database fallback, delivery after disconnect, or synchronization of compositor/render timing.
+- A connected DataChannel gives direct browser-to-browser delivery for live actions, a small guest-to-host clock-offset estimate, and reduced dependence on database subscription latency. The padded start and monotonic local arming reduce avoidable startup skew; they do not guarantee a fixed latency, exact clock alignment, an identical rendered frame, ordering across the database fallback, delivery after disconnect, or perfect fairness.
 - STUN-only WebRTC works on many networks but cannot traverse every symmetric NAT, carrier network, enterprise firewall, VPN, or browser privacy policy. No TURN relay is configured; those cases remain on Supabase database fallback. Add your own TURN credentials to the RTC configuration for broader connectivity.
 - WebRTC requires a current browser with `RTCPeerConnection` and DataChannel support. Unsupported or failed connections continue with Supabase state updates.
 - This remains **client-timed casual play**, not cheat-proof or server-authoritative timing. A client can tamper with its measured reaction, clock-ping replies, choices, or scores. Different clocks, timer throttling, rendering/compositor delays, input-device latency, network asymmetry, and fallback database delivery can still affect perceived fairness; direct peer transport does not remove those limits.
 
 ### SQL Requirement
 
-Existing users must rerun the v2.3.0 SQL block to replace the retired prior mode with `rock-paper-scissors` in room, Quick Game queue, and RPC allowlists. v2.4.1 requires no SQL change: local reaction-clock and menu changes retain the existing Supabase Realtime and WebRTC DataChannel setup.
+Existing users must rerun the v2.3.0 SQL block to replace the retired prior mode with `rock-paper-scissors` in room, Quick Game queue, and RPC allowlists. v2.5.0 requires no SQL update: queue restoration/polling and Showdown next-round control use the existing queue primary key, RPCs, room JSON state, and RLS policies.
 
 ## Files
 

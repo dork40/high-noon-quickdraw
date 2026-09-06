@@ -34,6 +34,8 @@ export interface MultiplayerRound {
   seriesHostWins?: number;
   seriesGuestWins?: number;
   seriesRound?: number;
+  // In multiplayer Showdown, the previous round winner deals the next round; ties return control to host.
+  nextRoundHost?: "host" | "guest";
   matchWinner?: "host" | "guest";
   hostAction?: RoundAction;
   guestAction?: RoundAction;

@@ -30,6 +30,7 @@ export interface MultiplayerService {
   leaveRoom(): Promise<void>;
   subscribeToRoom(onRoom: (room: Room | null) => void, onError: (message: string) => void): () => void;
   requestQuickMatch(mode: GameMode): Promise<Room | null>;
+  restoreQuickMatch(): Promise<{ mode: GameMode; room: Room | null } | null>;
   cancelQuickMatch(): Promise<Room | null>;
   subscribeToQuickMatch(onMatch: (room: Room) => void, onError: (message: string) => void): () => void;
   startRound(round: MultiplayerRound): Promise<Room>;
@@ -275,6 +276,18 @@ export const multiplayer: MultiplayerService = {
     return data ? room = mapRoom(data) : null;
   },
 
+  async restoreQuickMatch() {
+    const id = await userId();
+    const { data, error } = await requireClient().from("quick_match_queue").select().eq("user_id", id).maybeSingle<QuickMatchQueueRow>();
+    if (error) throw explain(error);
+    if (!data) return null;
+    const entry = mapQueueEntry(data);
+    if (!entry.roomCode) return { mode: entry.mode, room: null };
+    const { data: roomRow, error: roomError } = await requireClient().from("duel_rooms").select().eq("code", entry.roomCode).maybeSingle<RoomRow>();
+    if (roomError) throw explain(roomError);
+    return { mode: entry.mode, room: roomRow ? room = mapRoom(roomRow) : null };
+  },
+
   async cancelQuickMatch() {
     await userId();
     const { data, error } = await requireClient().rpc("cancel_quick_match").maybeSingle<RoomRow>();
@@ -286,9 +299,25 @@ export const multiplayer: MultiplayerService = {
     if (!client) return () => undefined;
     quickMatchChannel?.unsubscribe();
     let active = true;
+    let pollTimer: number | undefined;
+    let ownChannel: RealtimeChannel | null = null;
+    let checking = false;
+    const checkForMatch = async () => {
+      if (!active || checking) return;
+      checking = true;
+      try {
+        const restored = await multiplayer.restoreQuickMatch();
+        if (active && restored?.room) onMatch(restored.room);
+      } catch (error) {
+        if (active) onError(error instanceof Error ? error.message : "Could not check Quick Game status.");
+      } finally {
+        checking = false;
+        if (active) pollTimer = window.setTimeout(checkForMatch, 2_500);
+      }
+    };
     void userId().then(id => {
       if (!active) return;
-      quickMatchChannel = client.channel(`quick-match-${id}`).on("postgres_changes", { event: "*", schema: "public", table: "quick_match_queue", filter: `user_id=eq.${id}` }, async payload => {
+      ownChannel = client.channel(`quick-match-${id}`).on("postgres_changes", { event: "*", schema: "public", table: "quick_match_queue", filter: `user_id=eq.${id}` }, async payload => {
         if (!active) return;
         if (payload.eventType === "DELETE") return;
         const entry = mapQueueEntry(payload.new as QuickMatchQueueRow);
@@ -299,13 +328,22 @@ export const multiplayer: MultiplayerService = {
       }).subscribe(status => {
         if (active && (status === "CHANNEL_ERROR" || status === "TIMED_OUT")) onError("Quick Game updates failed. Confirm Realtime is enabled for public.quick_match_queue.");
       });
+      quickMatchChannel = ownChannel;
+      void checkForMatch();
     }).catch(error => { if (active) onError(error instanceof Error ? error.message : "Could not listen for Quick Game matches."); });
-    return () => { active = false; quickMatchChannel?.unsubscribe(); quickMatchChannel = null; };
+    return () => {
+      active = false;
+      window.clearTimeout(pollTimer);
+      ownChannel?.unsubscribe();
+      if (quickMatchChannel === ownChannel) quickMatchChannel = null;
+    };
   },
 
   async startRound(round) {
     const id = await userId();
-    if (!room || room.hostId !== id || !room.guestId || !room.roundState.hostReady || !room.roundState.guestReady || (room.status !== "ready" && !room.roundState.round?.winner) || room.roundState.round?.matchWinner) throw new MultiplayerError("Both players must be ready before the host starts a round.");
+    const prior = room?.roundState.round;
+    const controller = room?.mode === "showdown-series" && prior?.winner ? prior.nextRoundHost ?? room.hostId : room?.hostId;
+    if (!room || controller !== id || !room.guestId || !room.roundState.hostReady || !room.roundState.guestReady || (room.status !== "ready" && !prior?.winner) || prior?.matchWinner) throw new MultiplayerError("Both players must be ready before the designated round controller starts a round.");
     return updateRoom({ round_state: { ...room.roundState, round }, status: "playing" });
   },
 
@@ -348,7 +386,7 @@ export const multiplayer: MultiplayerService = {
     if (reactionRace && (!hostAction || !guestAction) && !allowSingleReaction) return room;
     const tieToleranceMs = 3;
     const winner = gameMode === "trail-trace" || gameMode === "bottle-shot"
-      ? (hostAction!.score ?? 0) >= (guestAction!.score ?? 0) ? "host" : "guest"
+      ? (hostAction!.score ?? 0) === (guestAction!.score ?? 0) ? "tie" : (hostAction!.score ?? 0) > (guestAction!.score ?? 0) ? "host" : "guest"
       : gameMode === "rock-paper-scissors"
         ? resolveRpsWinner(hostAction!.choice!, guestAction!.choice!)
         : hostAction?.falseStart && guestAction?.falseStart ? "tie"
@@ -361,7 +399,8 @@ export const multiplayer: MultiplayerService = {
     const hostWins = (current.seriesHostWins ?? 0) + (winner === "host" ? 1 : 0);
     const guestWins = (current.seriesGuestWins ?? 0) + (winner === "guest" ? 1 : 0);
     const isSeries = room.mode === "showdown-series" || gameMode === "rock-paper-scissors";
-    return updateRoom({ round_state: { ...room.roundState, round: { ...current, hostAction, guestAction, winner, resolvedAt: new Date().toISOString(), ...(isSeries ? { seriesHostWins: hostWins, seriesGuestWins: guestWins, matchWinner: hostWins === 3 ? "host" : guestWins === 3 ? "guest" : undefined } : {}) } } });
+    const nextRoundHost = room.mode === "showdown-series" ? winner === "tie" ? "host" : winner : undefined;
+    return updateRoom({ round_state: { ...room.roundState, round: { ...current, hostAction, guestAction, winner, resolvedAt: new Date().toISOString(), ...(isSeries ? { seriesHostWins: hostWins, seriesGuestWins: guestWins, matchWinner: hostWins === 3 ? "host" : guestWins === 3 ? "guest" : undefined } : {}), ...(nextRoundHost ? { nextRoundHost } : {}) } } });
   },
   sendLiveAction(event) { if (transport !== "connected" || !dataChannel) return false; try { dataChannel.send(JSON.stringify({ type: "action", event })); return true; } catch { transport = "fallback"; return false; } },
   onLiveEvent(listener) { liveListener = listener; return () => { if (liveListener === listener) liveListener = undefined; }; },
