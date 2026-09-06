@@ -83,13 +83,15 @@ function attachDataChannel(next: RTCDataChannel) {
         dataChannel?.send(JSON.stringify({ type: "clock-pong", pingId: message.pingId, sentAt: message.sentAt, hostNow: Date.now() }));
         return;
       }
-      if (message.type === "clock-pong" && room && localUserId === room.guestId && message.pingId && Number.isFinite(message.sentAt) && Number.isFinite(message.hostNow)) {
+      const sentAt = message.sentAt;
+      const hostNow = message.hostNow;
+      if (message.type === "clock-pong" && room && localUserId === room.guestId && message.pingId && typeof sentAt === "number" && Number.isFinite(sentAt) && typeof hostNow === "number" && Number.isFinite(hostNow)) {
         const receivedAt = Date.now();
-        const roundTrip = receivedAt - message.sentAt;
+        const roundTrip = receivedAt - sentAt;
         // The lowest-RTT sample is least distorted by queueing on either peer.
         if (roundTrip >= 0 && roundTrip < bestClockRoundTripMs) {
           bestClockRoundTripMs = roundTrip;
-          hostClockOffsetMs = message.hostNow - (message.sentAt + roundTrip / 2);
+          hostClockOffsetMs = hostNow - (sentAt + roundTrip / 2);
         }
         return;
       }

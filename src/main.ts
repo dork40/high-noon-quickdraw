@@ -6,7 +6,7 @@ import { multiplayer } from "./services/multiplayer";
 import type { AiDifficulty, DuelResult, DirectGameMode, GameMode, MultiplayerRound, Room, Round, RpsChoice } from "./types";
 
 type Page = "home" | "mode-select" | "game" | "multiplayer" | "how-to";
-const appVersion = "2.4.0";
+const appVersion = "2.4.1";
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const mobileViewport = window.matchMedia("(max-width: 700px)");
 let page: Page = "home";

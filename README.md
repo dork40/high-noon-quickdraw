@@ -1,6 +1,6 @@
 # High Noon Showdown
 
-High Noon Showdown v2.4.0 is an original Wild West browser game with Rock Paper Scissors, synthesized Web Audio effects, and casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
+High Noon Showdown v2.4.1 is an original Wild West browser game with Rock Paper Scissors, synthesized Web Audio effects, and casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
 
 ## Run
 
@@ -228,7 +228,7 @@ For Trail Trace, the deterministic path is scored locally and a submission is ac
 
 ### SQL Requirement
 
-Existing users must rerun the v2.3.0 SQL block to replace the retired prior mode with `rock-paper-scissors` in room, Quick Game queue, and RPC allowlists. v2.4.0 requires no SQL change: local reaction-clock and menu changes retain the existing Supabase Realtime and WebRTC DataChannel setup.
+Existing users must rerun the v2.3.0 SQL block to replace the retired prior mode with `rock-paper-scissors` in room, Quick Game queue, and RPC allowlists. v2.4.1 requires no SQL change: local reaction-clock and menu changes retain the existing Supabase Realtime and WebRTC DataChannel setup.
 
 ## Files
 
