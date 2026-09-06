@@ -7,7 +7,7 @@ import { authority } from "./services/authority";
 import type { AiDifficulty, DuelResult, DirectGameMode, GameMode, LocalModeStats, MultiplayerGameMode, MultiplayerRound, PlayerProfile, Room, Round, RpsChoice } from "./types";
 
 type Page = "home" | "mode-select" | "game" | "multiplayer" | "how-to" | "profile";
-const appVersion = "3.0.2";
+const appVersion = "3.1.1";
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const mobileViewport = window.matchMedia("(max-width: 700px)");
 let page: Page = "home";
@@ -103,8 +103,9 @@ function nav(next: Page) {
 }
 
 function layout(content: string) {
+  const navButton = (target: Page, label: string) => `<button data-page="${target}"${page === target ? " aria-current=\"page\"" : ""}>${label}</button>`;
   return `<main class="shell">
-    <header class="masthead"><button class="brand" data-page="home" aria-label="High Noon Showdown home"><span>HN</span> HIGH NOON SHOWDOWN</button><nav aria-label="Primary navigation"><button data-page="home">HOME</button><button data-page="mode-select">PLAY</button><button data-page="multiplayer">MULTI</button><button data-page="profile">PROFILE</button><button id="sound-toggle" aria-pressed="${isMuted()}">${isMuted() ? "UNMUTE" : "MUTE"}</button><button data-page="how-to">HOW TO PLAY</button></nav></header>
+    <header class="masthead"><button class="brand" data-page="home" aria-label="High Noon Showdown home"><span>HN</span> HIGH NOON SHOWDOWN</button><nav aria-label="Primary navigation">${navButton("home", "HOME")}${navButton("mode-select", "PLAY")}${navButton("multiplayer", "MULTIPLAYER")}${navButton("profile", "PROFILE")}<button id="sound-toggle" aria-pressed="${isMuted()}">${isMuted() ? "UNMUTE" : "MUTE"}</button>${navButton("how-to", "HOW TO PLAY")}</nav></header>
     ${content}
     <footer><span>ORIGINAL WESTERN DUEL GAME</span><span>ONE BELL. ONE SHOT.</span><span>VERSION ${appVersion}</span></footer>
   </main>`;
@@ -144,7 +145,7 @@ function toggleFullscreen() {
 
 function homeView() {
   return layout(`<section class="hero"><div class="sun"></div><div class="mesa mesa-far"></div><div class="mesa mesa-near"></div><div class="dust"></div><div class="hero-copy"><p class="eyebrow">A QUICK-DRAW DUEL AT SUNSET</p><h1>HIGH NOON<br><i>SHOWDOWN</i></h1><p class="lead">Face Ash in reflex, precision, nerve, or a best-of-five showdown.</p><div class="hero-actions"><div class="hero-primary-actions"><button class="primary" data-page="mode-select">PLAY VS AI</button><button class="primary" data-page="multiplayer">MULTIPLAYER</button></div><button class="outline hero-how-to" data-page="how-to">HOW TO PLAY</button></div></div><p class="corner-note">NO EXTERNAL ASSETS<br>ORIGINAL FRONTIER TALE</p></section>
-  <section class="home-cards"><article><b>01</b><h2>Choose your duel.</h2><p>Quick Draw, Word Duel, or Trail Trace: each tests a different skill.</p></article><article><b>02</b><h2>Hold your line.</h2><p>Trail Trace rewards distance travelled and how accurately you follow its course.</p></article><article><b>${stats.best ?? "--"}</b><h2>Local best.</h2><p>Milliseconds from signal to a winning action.</p></article></section>`);
+  <section class="home-cards home-dispatch"><article><p class="eyebrow">THE BOARD</p><h2>Pick your test.</h2><p>Draw fast, type under pressure, trace a trail, break bottles, or settle it with Rock Paper Scissors.</p><button class="text-button" data-page="mode-select">VIEW AI MODES</button></article><article><p class="eyebrow">THE STREET</p><h2>Face a real rival.</h2><p>Use a private room for friends or enter Casual Quick Game to find another gunslinger.</p><button class="text-button" data-page="multiplayer">ENTER MULTIPLAYER</button></article><article><p class="eyebrow">YOUR LEGEND</p><h2>${profile.title}</h2><p>Build streaks, earn badges, and challenge the Ghost with the best draw this browser has recorded.</p><button class="text-button" data-page="profile">VIEW PROFILE</button></article></section>`);
 }
 
 function profileView() {

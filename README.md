@@ -1,6 +1,10 @@
 # High Noon Showdown
 
-High Noon Showdown v3.0.2 is an original Wild West browser game with local player progression, synthesized Web Audio effects, an AI-only Ghost Challenge personal-best race, and clearly labeled casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
+High Noon Showdown v3.1.1 is an original Wild West browser game with local player progression, synthesized Web Audio effects, an AI-only Ghost Challenge personal-best race, and clearly labeled casual multiplayer. It contains no borrowed characters, art, sounds, maps, dialogue, or branding.
+
+## v3.1.0 Visual Refresh
+
+The frontier interface now uses a more deliberate saloon-print visual system: clearer heading and label hierarchy, stronger selected and focus states, consistent panel and button treatment, compact active navigation, and refined lobby, profile, scoreboard, tutorial, and game surfaces. The expanded navigation remains usable on small screens through a touch-scrollable navigation row; no routes, modes, controls, or game behavior changed.
 
 ## Run
 
@@ -230,7 +234,7 @@ For Trail Trace, the deterministic path is scored locally and a submission is ac
 
 ### SQL Requirement
 
-Existing users must rerun the v2.3.0 SQL block to replace the retired prior mode with `rock-paper-scissors` in room, Quick Game queue, and RPC allowlists. v3.0.2 needs no schema migration: Ghost Challenge is local-only and its record uses the existing browser profile storage.
+Existing users must rerun the v2.3.0 SQL block to replace the retired prior mode with `rock-paper-scissors` in room, Quick Game queue, and RPC allowlists. v3.0.3 needs no schema migration: Ghost Challenge is local-only and its record uses the existing browser profile storage.
 
 ## Profile, Queues, And Authority
 
@@ -250,6 +254,6 @@ GitHub Actions in `.github/workflows/build.yml` installs and builds both the bro
 - `src/types.ts` - shared room and round types
 - `src/main.ts` - browser UI, AI gameplay, and multiplayer lobby wiring
 - `src/game/rules.ts` - pure versus-AI timing and duel resolution rules
-- `src/style.css` - responsive Bottle Shot range and mobile-safe target styling
+- `src/style.css` - v3.1 frontier visual system, responsive game surfaces, and mobile-safe target styling
 - `src/services/authority.ts` - optional, safe authority URL and TURN credential contract
 - `server/` - separately deployable HTTP/WebSocket and TURN credential foundation; not a production ranked system
